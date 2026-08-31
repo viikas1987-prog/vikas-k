@@ -1,14 +1,15 @@
 import React from 'react';
 import { useCart } from '../../context/CartContext';
 import { useSound } from '../../context/SoundContext';
-import { ShoppingBag, Heart, Volume2, VolumeX, Sparkles, PhoneCall } from 'lucide-react';
+import { ShoppingBag, Heart, Volume2, VolumeX, Sparkles, PhoneCall, Truck } from 'lucide-react';
 import { cozyAudio } from '../../utils/audioSynth';
 
 interface PhotoNavbarProps {
   onNavigate: (section: string) => void;
+  onOpenTracking?: () => void;
 }
 
-export const PhotoNavbar: React.FC<PhotoNavbarProps> = ({ onNavigate }) => {
+export const PhotoNavbar: React.FC<PhotoNavbarProps> = ({ onNavigate, onOpenTracking }) => {
   const { cartCount, subtotal, setIsCartOpen, wishlist } = useCart();
   const { isPlaying, toggleSound } = useSound();
 
@@ -55,6 +56,19 @@ export const PhotoNavbar: React.FC<PhotoNavbarProps> = ({ onNavigate }) => {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2.5">
+                    {/* Track Order Button */}
+          <button
+            onClick={() => {
+              cozyAudio.playSoftTap();
+              onOpenTracking?.();
+            }}
+            className="px-3 py-1.5 rounded-full bg-white hover:bg-gray-100 border border-gray-200 text-gray-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+            title="Track Your Order & Shipment"
+          >
+            <Truck className="w-3.5 h-3.5 text-[#FF6B6B]" />
+            <span className="hidden sm:inline">Track Order</span>
+          </button>
+
           {/* Lullaby Audio Player */}
           <button
             onClick={toggleSound}

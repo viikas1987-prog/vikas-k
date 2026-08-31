@@ -32,6 +32,7 @@ interface CheckoutOrderModalProps {
   subtotal?: number;
   discount?: number;
   finalTotal?: number;
+  onOpenTracking?: (orderId: string) => void;
 }
 
 export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
@@ -40,6 +41,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
   subtotal: propSubtotal,
   discount: propDiscount,
   finalTotal: propFinalTotal,
+  onOpenTracking,
 }) => {
   const {
     cart,
@@ -661,9 +663,23 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
             {/* 1-Click WhatsApp Notification Button */}
             <button
               onClick={handleOpenWhatsApp}
-              className="w-full py-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-sm shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <MessageSquare className="w-4 h-4" /> Send Instant WhatsApp Receipt to +91 {upiNumber}
+            </button>
+
+            {/* Track Shipment Live Button */}
+            <button
+              onClick={() => {
+                const ordId = placedOrder.orderId;
+                setStep('form');
+                setPlacedOrder(null);
+                handleClose();
+                onOpenTracking?.(ordId);
+              }}
+              className="w-full py-3 rounded-2xl bg-gray-900 hover:bg-black text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Truck className="w-4 h-4 text-[#FF6B6B]" /> Track Shipment Live & View Journey
             </button>
 
             <button

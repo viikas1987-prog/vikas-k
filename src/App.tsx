@@ -20,6 +20,7 @@ import { Footer } from './components/layout/Footer';
 import { ProductDetailModal } from './components/shop/ProductDetailModal';
 import { CartDrawer } from './components/shop/CartDrawer';
 import { CheckoutOrderModal } from './components/shop/CheckoutOrderModal';
+import { OrderTrackingModal } from './components/shop/OrderTrackingModal';
 import { FloatingSoundBar } from './components/layout/FloatingSoundBar';
 import { AdminStandalonePage } from './components/admin/AdminStandalonePage';
 
@@ -27,6 +28,8 @@ import { Product } from './types';
 
 export const App: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [trackingInitialOrderId, setTrackingInitialOrderId] = useState('');
   const [isAdminPage, setIsAdminPage] = useState<boolean>(() => {
     return (
       window.location.hash.toLowerCase().includes('admin') ||
@@ -80,7 +83,7 @@ export const App: React.FC = () => {
     <div className="min-h-screen bg-[#FFF9F6] text-[#1F2937] font-inter selection:bg-[#FF6B6B] selection:text-white">
       
       {/* Top Clean Customer Navbar */}
-      <PhotoNavbar onNavigate={scrollToSection} />
+      <PhotoNavbar onNavigate={scrollToSection} onOpenTracking={() => { setTrackingInitialOrderId(''); setIsTrackingModalOpen(true); }} />
 
       {/* 1. TOONHUB 3D Character Figurine Carousel */}
       <div id="toonhub" className="pt-2">
