@@ -178,12 +178,29 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
     }, 1500);
   };
 
+  const [utrError, setUtrError] = useState('');
+
   const handleVerifyUpiPayment = () => {
+    const cleanedUtr = utrNumber.trim();
+    if (!cleanedUtr) {
+      setUtrError('⚠️ Payment ID / 12-digit UPI UTR is mandatory! Please enter the Transaction Ref ID from your payment screen.');
+      cozyAudio.playSoftTap();
+      return;
+    }
+
+    if (cleanedUtr.length < 8) {
+      setUtrError('⚠️ Please enter a valid UPI Transaction / UTR Number (usually 12 digits).');
+      cozyAudio.playSoftTap();
+      return;
+    }
+
+    setUtrError('');
     setIsVerifying(true);
     cozyAudio.playSoftTap();
+
     // Simulate automated gateway verification delay
     setTimeout(() => {
-      finalizeOrder('UPI Verified & Paid', utrNumber.trim() || 'UPI-APP-CONFIRMED');
+      finalizeOrder('UPI Verified & Paid', cleanedUtr);
     }, 1600);
   };
 
@@ -514,19 +531,41 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
               </div>
             </div>
 
-            {/* Optional UTR / Reference ID Field */}
-            <div className="text-left">
-              <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                UPI Reference ID / UTR Number (Optional 12-digit number from your UPI app):
+            {/* Mandatory UTR / Transaction ID Field */}
+            <div className="text-left space-y-1">
+              <label className="block text-[11px] font-extrabold text-gray-900 dark:text-gray-100 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-[#FF6B6B]" /> UPI Payment / UTR ID <span className="text-[#FF6B6B]">* (MANDATORY)</span>
+                </span>
+                <span className="text-[10px] text-gray-500">12 Digits from UPI App</span>
               </label>
+
               <input
                 type="text"
+                required
                 value={utrNumber}
-                onChange={(e) => setUtrNumber(e.target.value.replace(/\D/g, ''))}
-                maxLength={12}
-                placeholder="e.g. 423891024589"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-mono font-bold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B6B]"
+                onChange={(e) => {
+                  setUtrNumber(e.target.value.replace(/\D/g, ''));
+                  if (utrError) setUtrError('');
+                }}
+                maxLength={16}
+                placeholder="Enter 12-digit UTR / UPI Ref ID (e.g. 423891024589)"
+                className={`w-full px-3.5 py-3 rounded-xl border font-mono font-bold text-xs focus:outline-none transition ${
+                  utrError
+                    ? 'border-red-500 bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-200 ring-2 ring-red-400'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#FF6B6B]'
+                }`}
               />
+
+              {utrError ? (
+                <p className="text-[11px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1 animate-shake">
+                  {utrError}
+                </p>
+              ) : (
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  💡 <strong>Where to find?</strong> Open GPay/PhonePe/Paytm payment receipt & copy the 12-digit <strong>UPI Ref No. / UTR</strong>.
+                </p>
+              )}
             </div>
 
             {/* Verify & Complete Button */}
@@ -537,11 +576,11 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
             >
               {isVerifying ? (
                 <>
-                  <Sparkles className="w-5 h-5 animate-spin" /> Verifying Payment on {upiNumber}...
+                  <Sparkles className="w-5 h-5 animate-spin" /> Verifying Payment ID with Bank Network...
                 </>
               ) : (
                 <>
-                  <CheckCircle className="w-5 h-5" /> I Have Paid ₹{finalTotal.toLocaleString('en-IN')} — Verify & Confirm
+                  <CheckCircle className="w-5 h-5" /> Verify UTR & Confirm Order — ₹{finalTotal.toLocaleString('en-IN')}
                 </>
               )}
             </button>
