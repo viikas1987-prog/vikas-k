@@ -36,21 +36,24 @@ export const PhotoNavbar: React.FC<PhotoNavbarProps> = ({ onNavigate, onOpenTrac
         </div>
 
         {/* Center Nav Links */}
-        <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-gray-600">
+        <nav className="hidden md:flex items-center gap-5 text-xs font-bold text-gray-600">
           <button onClick={() => onNavigate('toonhub')} className="hover:text-[#FF6B6B] transition cursor-pointer text-[#FF6B6B]">
-            TOONHUB 3D Studio
+            TOONHUB 3D
           </button>
           <button onClick={() => onNavigate('catalog')} className="hover:text-[#FF6B6B] transition cursor-pointer">
-            Girls Tops & Combos
-          </button>
-          <button onClick={() => onNavigate('catalog')} className="hover:text-[#FF6B6B] transition cursor-pointer">
-            Black Turtlenecks
-          </button>
-          <button onClick={() => onNavigate('catalog')} className="hover:text-[#FF6B6B] transition cursor-pointer">
-            Boston 91 Drops
+            Collection & Tops
           </button>
           <button onClick={() => onNavigate('about')} className="hover:text-[#FF6B6B] transition cursor-pointer">
             Vikas Kumar Story
+          </button>
+          <button
+            onClick={() => {
+              cozyAudio.playSoftTap();
+              onOpenTracking?.();
+            }}
+            className="px-3 py-1 rounded-full bg-rose-50 hover:bg-rose-100 text-[#FF6B6B] border border-rose-200 transition cursor-pointer flex items-center gap-1 font-extrabold shadow-sm"
+          >
+            <Truck className="w-3.5 h-3.5" /> Track Order
           </button>
         </nav>
 
@@ -62,11 +65,11 @@ export const PhotoNavbar: React.FC<PhotoNavbarProps> = ({ onNavigate, onOpenTrac
               cozyAudio.playSoftTap();
               onOpenTracking?.();
             }}
-            className="px-3 py-1.5 rounded-full bg-white hover:bg-gray-100 border border-gray-200 text-gray-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+            className="px-3 py-1.5 rounded-full bg-white hover:bg-rose-50 border border-rose-200 text-gray-900 text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
             title="Track Your Order & Shipment"
           >
-            <Truck className="w-3.5 h-3.5 text-[#FF6B6B]" />
-            <span className="hidden sm:inline">Track Order</span>
+            <Truck className="w-4 h-4 text-[#FF6B6B]" />
+            <span className="font-bold text-[#FF6B6B]">Track Order</span>
           </button>
 
           {/* Lullaby Audio Player */}

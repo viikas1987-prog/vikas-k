@@ -28,7 +28,12 @@ import { Product } from './types';
 
 export const App: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState<boolean>(() => {
+    return (
+      window.location.hash.toLowerCase().includes('track') ||
+      window.location.search.toLowerCase().includes('track')
+    );
+  });
   const [trackingInitialOrderId, setTrackingInitialOrderId] = useState('');
   const [isAdminPage, setIsAdminPage] = useState<boolean>(() => {
     return (
@@ -45,6 +50,10 @@ export const App: React.FC = () => {
         window.location.search.toLowerCase().includes('admin') ||
         window.location.pathname.toLowerCase().includes('admin');
       setIsAdminPage(isNowAdmin);
+
+      if (window.location.hash.toLowerCase().includes('track')) {
+        setIsTrackingModalOpen(true);
+      }
     };
 
     window.addEventListener('hashchange', handleHashChange);
