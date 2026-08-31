@@ -27,22 +27,42 @@ import { cozyAudio } from '../../utils/audioSynth';
 import confetti from 'canvas-confetti';
 
 interface CheckoutOrderModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  subtotal: number;
-  discount: number;
-  finalTotal: number;
+  isOpen?: boolean;
+  onClose?: () => void;
+  subtotal?: number;
+  discount?: number;
+  finalTotal?: number;
 }
 
 export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
   isOpen,
   onClose,
-  subtotal,
-  discount,
-  finalTotal,
+  subtotal: propSubtotal,
+  discount: propDiscount,
+  finalTotal: propFinalTotal,
 }) => {
-  const { cart, clearCart } = useCart();
+  const {
+    cart,
+    clearCart,
+    isCheckoutOpen,
+    setIsCheckoutOpen,
+    subtotal: cartSubtotal,
+    discountPercent,
+  } = useCart();
   const { settings, addOrder } = useStore();
+
+  const activeIsOpen = isOpen !== undefined ? isOpen : isCheckoutOpen;
+  const handleClose = () => {
+    if (onClose) onClose();
+    setIsCheckoutOpen(false);
+  };
+
+  const subtotal = propSubtotal !== undefined ? propSubtotal : cartSubtotal;
+  const discount = propDiscount !== undefined ? propDiscount : discountPercent;
+  const finalTotal =
+    propFinalTotal !== undefined
+      ? propFinalTotal
+      : Math.max(0, subtotal * (1 - discount));
 
   const [step, setStep] = useState<'form' | 'upi_gateway' | 'success'>('form');
   const [fullName, setFullName] = useState('');
@@ -52,6 +72,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
   const [city, setCity] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'cod' | 'card'>('upi');
   const [utrNumber, setUtrNumber] = useState('');
+  const [utrError, setUtrError] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [placedOrder, setPlacedOrder] = useState<any>(null);
@@ -73,6 +94,14 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
   )}`;
 
   useEffect(() => {
+    if (activeIsOpen && step === 'success') {
+      setStep('form');
+      setUtrNumber('');
+      setUtrError('');
+    }
+  }, [activeIsOpen]);
+
+  useEffect(() => {
     let interval: any;
     if (step === 'upi_gateway' && timerSeconds > 0) {
       interval = setInterval(() => {
@@ -82,7 +111,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
     return () => clearInterval(interval);
   }, [step, timerSeconds]);
 
-  if (!isOpen) return null;
+  if (!activeIsOpen) return null;
 
   const copyToClipboard = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);
@@ -178,8 +207,6 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
     }, 1500);
   };
 
-  const [utrError, setUtrError] = useState('');
-
   const handleVerifyUpiPayment = () => {
     const cleanedUtr = utrNumber.trim();
     if (!cleanedUtr) {
@@ -224,7 +251,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
       >
         {/* Close Button */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-5 right-5 w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-[#FF6B6B] hover:text-white transition cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
@@ -643,7 +670,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
               onClick={() => {
                 setStep('form');
                 setPlacedOrder(null);
-                onClose();
+                handleClose();
               }}
               className="px-6 py-2 rounded-xl text-xs font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
             >

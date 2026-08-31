@@ -10,6 +10,11 @@ export const CartDrawer: React.FC = () => {
     cart,
     isCartOpen,
     setIsCartOpen,
+    setIsCheckoutOpen,
+    discountPercent,
+    setDiscountPercent,
+    appliedCoupon,
+    setAppliedCoupon,
     removeFromCart,
     updateQuantity,
     subtotal,
@@ -20,11 +25,9 @@ export const CartDrawer: React.FC = () => {
 
   const { validateCoupon } = useStore();
 
-  const [promoCode, setPromoCode] = useState('');
-  const [discount, setDiscount] = useState(0);
-  const [promoApplied, setPromoApplied] = useState(false);
+  const [promoCode, setPromoCode] = useState(appliedCoupon || '');
+  const [promoApplied, setPromoApplied] = useState(discountPercent > 0);
   const [promoMessage, setPromoMessage] = useState('');
-  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
 
   if (!isCartOpen) return null;
 
@@ -33,7 +36,8 @@ export const CartDrawer: React.FC = () => {
     const res = validateCoupon(promoCode);
     if (res.valid) {
       cozyAudio.playCelebration();
-      setDiscount(res.discountPercent / 100);
+      setDiscountPercent(res.discountPercent / 100);
+      setAppliedCoupon(promoCode.trim().toUpperCase());
       setPromoApplied(true);
       setPromoMessage(`🎉 ${res.discountPercent}% OFF Applied (${res.description})`);
     } else {
@@ -42,12 +46,15 @@ export const CartDrawer: React.FC = () => {
     }
   };
 
-  const finalTotal = Math.max(0, subtotal * (1 - discount));
+  const finalTotal = Math.max(0, subtotal * (1 - discountPercent));
   const progressPercent = Math.min(100, (subtotal / freeGiftThreshold) * 100);
 
   const handleOpenCheckout = () => {
-    cozyAudio.playSoftTap();
-    setIsCheckoutModalOpen(true);
+    try {
+      cozyAudio.playSoftTap();
+    } catch (e) {}
+    setIsCartOpen(false);
+    setIsCheckoutOpen(true);
   };
 
   return (
@@ -206,7 +213,7 @@ export const CartDrawer: React.FC = () => {
 
             {promoApplied && (
               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> {promoMessage || `${(discount * 100).toFixed(0)}% Promo Discount Applied!`}
+                <Sparkles className="w-3 h-3" /> {promoMessage || `${(discountPercent * 100).toFixed(0)}% Promo Discount Applied!`}
               </span>
             )}
 
@@ -216,10 +223,10 @@ export const CartDrawer: React.FC = () => {
                 <span>Subtotal:</span>
                 <span>₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
-              {discount > 0 && (
+              {discountPercent > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
-                  <span>Promo Discount ({(discount * 100).toFixed(0)}%):</span>
-                  <span>-₹{(subtotal * discount).toLocaleString('en-IN')}</span>
+                  <span>Promo Discount ({(discountPercent * 100).toFixed(0)}%):</span>
+                  <span>-₹{(subtotal * discountPercent).toLocaleString('en-IN')}</span>
                 </div>
               )}
               <div className="flex justify-between text-cozy-warmBrown/70 dark:text-cozy-night-textMuted">
@@ -242,15 +249,6 @@ export const CartDrawer: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Instant Notification Order Checkout Modal */}
-      <CheckoutOrderModal
-        isOpen={isCheckoutModalOpen}
-        onClose={() => setIsCheckoutModalOpen(false)}
-        subtotal={subtotal}
-        discount={discount}
-        finalTotal={finalTotal}
-      />
     </div>
   );
 };

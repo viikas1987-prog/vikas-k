@@ -19,6 +19,7 @@ import { Footer } from './components/layout/Footer';
 
 import { ProductDetailModal } from './components/shop/ProductDetailModal';
 import { CartDrawer } from './components/shop/CartDrawer';
+import { CheckoutOrderModal } from './components/shop/CheckoutOrderModal';
 import { FloatingSoundBar } from './components/layout/FloatingSoundBar';
 import { AdminStandalonePage } from './components/admin/AdminStandalonePage';
 
@@ -137,6 +138,7 @@ export const App: React.FC = () => {
         onNavigateToCustomizer={() => scrollToSection('customizer')}
       />
       <CartDrawer />
+      <CheckoutOrderModal />
       <FloatingSoundBar />
     </div>
   );

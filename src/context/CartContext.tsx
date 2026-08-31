@@ -8,8 +8,14 @@ interface CartContextType {
   wishlist: string[]; // product IDs
   isCartOpen: boolean;
   isWishlistOpen: boolean;
+  isCheckoutOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
   setIsWishlistOpen: (open: boolean) => void;
+  setIsCheckoutOpen: (open: boolean) => void;
+  discountPercent: number;
+  setDiscountPercent: (d: number) => void;
+  appliedCoupon: string;
+  setAppliedCoupon: (code: string) => void;
   addToCart: (
     product: Product,
     color?: { name: string; hex: string },
@@ -57,6 +63,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [appliedCoupon, setAppliedCoupon] = useState('');
 
   const freeGiftThreshold = settings.freeGiftThreshold || 1499;
 
@@ -171,8 +180,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         wishlist,
         isCartOpen,
         isWishlistOpen,
+        isCheckoutOpen,
         setIsCartOpen,
         setIsWishlistOpen,
+        setIsCheckoutOpen,
+        discountPercent,
+        setDiscountPercent,
+        appliedCoupon,
+        setAppliedCoupon,
         addToCart,
         removeFromCart,
         updateQuantity,
