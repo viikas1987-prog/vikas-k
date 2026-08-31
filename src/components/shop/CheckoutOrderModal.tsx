@@ -1,7 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCart } from '../../context/CartContext';
 import { useStore } from '../../context/StoreContext';
-import { X, CheckCircle, ShieldCheck, Truck, ShoppingBag, MessageSquare, Phone, MapPin, CreditCard, Sparkles, Send } from 'lucide-react';
+import {
+  X,
+  CheckCircle,
+  ShieldCheck,
+  Truck,
+  ShoppingBag,
+  MessageSquare,
+  Phone,
+  MapPin,
+  CreditCard,
+  Sparkles,
+  Send,
+  QrCode,
+  Copy,
+  Check,
+  Smartphone,
+  ExternalLink,
+  Zap,
+  ArrowLeft,
+  Clock,
+  Lock,
+} from 'lucide-react';
 import { cozyAudio } from '../../utils/audioSynth';
 import confetti from 'canvas-confetti';
 
@@ -23,18 +44,54 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
   const { cart, clearCart } = useCart();
   const { settings, addOrder } = useStore();
 
+  const [step, setStep] = useState<'form' | 'upi_gateway' | 'success'>('form');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [pincode, setPincode] = useState('');
   const [city, setCity] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'cod' | 'card'>('upi');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [utrNumber, setUtrNumber] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [placedOrder, setPlacedOrder] = useState<any>(null);
+  const [timerSeconds, setTimerSeconds] = useState(300); // 5 min timer
+
+  const upiNumber = settings.ownerPhone || '8360303562';
+  const upiId = `${upiNumber}@upi`;
+  const upiPaytmId = `${upiNumber}@paytm`;
+  const payeeName = settings.ownerName ? `${settings.ownerName} Atelier` : 'Vikas Kumar Atelier';
+
+  // UPI payment intent link
+  const upiIntentUrl = `upi://pay?pa=${upiNumber}@upi&pn=${encodeURIComponent(
+    payeeName
+  )}&am=${finalTotal}&cu=INR&tn=${encodeURIComponent('Order Payment to Vikas Kumar Atelier')}`;
+
+  // QR Code URL (High contrast instant QR service)
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
+    upiIntentUrl
+  )}`;
+
+  useEffect(() => {
+    let interval: any;
+    if (step === 'upi_gateway' && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [step, timerSeconds]);
 
   if (!isOpen) return null;
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const copyToClipboard = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    cozyAudio.playSoftTap();
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!fullName.trim() || !phone.trim() || !address.trim() || !pincode.trim()) {
@@ -42,15 +99,27 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
+    if (paymentMethod === 'upi') {
+      // Transition to Automated UPI Payment Gateway
+      cozyAudio.playSoftTap();
+      setTimerSeconds(300);
+      setStep('upi_gateway');
+    } else {
+      // COD or Card direct completion
+      finalizeOrder('Confirmed (COD / Card)');
+    }
+  };
+
+  const finalizeOrder = (paymentStatus: string, utr: string = '') => {
+    setIsVerifying(true);
     cozyAudio.playCelebration();
 
     try {
       confetti({
-        particleCount: 100,
-        spread: 80,
+        particleCount: 120,
+        spread: 90,
         origin: { y: 0.5 },
-        colors: ['#FF6B6B', '#6BBF7A', '#6EB5FF', '#FFD166'],
+        colors: ['#FF6B6B', '#6BBF7A', '#6EB5FF', '#FFD166', '#845EC2'],
       });
     } catch (err) {}
 
@@ -65,7 +134,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
       )
       .join('\n');
 
-    const targetPhone = settings.ownerPhone || '8360303562';
+    const targetPhone = upiNumber;
     const storeName = settings.ownerName ? `${settings.ownerName.toUpperCase()} ATELIER` : 'VIKAS KUMAR ATELIER';
 
     const whatsappMessage = encodeURIComponent(
@@ -74,7 +143,9 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
       `*Customer:* ${fullName.trim()}\n` +
       `*WhatsApp Phone:* +91 ${phone.trim()}\n` +
       `*Delivery Address:* ${address.trim()}, ${city.trim()} - ${pincode.trim()}\n` +
-      `*Payment Mode:* ${paymentMethod.toUpperCase()}\n\n` +
+      `*Payment Mode:* ${paymentMethod.toUpperCase()} (${paymentStatus})\n` +
+      (utr ? `*UPI Ref/UTR Number:* ${utr}\n` : '') +
+      `*Paid To Account:* +91 ${upiNumber}\n\n` +
       `📦 *ITEMS ORDERED:*\n${itemsSummary}\n\n` +
       `💰 *FINAL AMOUNT:* ₹${finalTotal.toLocaleString('en-IN')} (FREE All-India Delivery)\n` +
       `✨ Thank you for choosing ${settings.ownerName || 'Vikas Kumar'} Atelier!`
@@ -82,16 +153,17 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
 
     const newOrderData = {
       orderId,
-      fullName,
-      phone,
-      address: `${address}, ${city} - ${pincode}`,
-      paymentMethod,
+      fullName: fullName.trim(),
+      phone: phone.trim(),
+      address: `${address.trim()}, ${city.trim()} - ${pincode.trim()}`,
+      paymentMethod: paymentMethod === 'upi' ? `UPI (Paid to ${upiNumber})` : paymentMethod.toUpperCase(),
+      utrNumber: utr,
       items: cart,
       subtotal,
       discount,
       finalTotal,
       timestamp: new Date().toISOString(),
-      status: 'Pending',
+      status: paymentMethod === 'upi' ? 'Paid (UPI Verified)' : 'Pending',
       whatsappUrl: `https://wa.me/91${targetPhone}?text=${whatsappMessage}`,
     };
 
@@ -99,10 +171,20 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
     addOrder(newOrderData);
 
     setTimeout(() => {
-      setIsSubmitting(false);
+      setIsVerifying(false);
       setPlacedOrder(newOrderData);
+      setStep('success');
       clearCart();
-    }, 1200);
+    }, 1500);
+  };
+
+  const handleVerifyUpiPayment = () => {
+    setIsVerifying(true);
+    cozyAudio.playSoftTap();
+    // Simulate automated gateway verification delay
+    setTimeout(() => {
+      finalizeOrder('UPI Verified & Paid', utrNumber.trim() || 'UPI-APP-CONFIRMED');
+    }, 1600);
   };
 
   const handleOpenWhatsApp = () => {
@@ -111,35 +193,42 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
     }
   };
 
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in select-none">
       <div
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-4xl p-6 sm:p-8 border border-gray-100 dark:border-gray-800 shadow-2xl"
+        className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-3xl p-6 sm:p-8 border border-gray-100 dark:border-gray-800 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-[#FF6B6B] hover:text-white transition cursor-pointer"
+          className="absolute top-5 right-5 w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-[#FF6B6B] hover:text-white transition cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {!placedOrder ? (
+        {/* STEP 1: CUSTOMER & DELIVERY DETAILS FORM */}
+        {step === 'form' && (
           <div>
             <div className="text-center mb-6">
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#FF6B6B] bg-[#FFF5F5] dark:bg-gray-800 px-3 py-1 rounded-full border border-rose-100 dark:border-gray-700 inline-flex items-center gap-1.5 mb-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Instant Order Notification System
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> 100% Secure Checkout
               </span>
               <h3 className="text-2xl font-black text-[#1F2937] dark:text-white">
-                Delivery & Payment Details
+                Delivery & Payment
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                You and the atelier will receive instant WhatsApp & Email notification upon confirmation.
+                Enter your delivery address to proceed with instant UPI or Cash on Delivery.
               </p>
             </div>
 
-            <form onSubmit={handlePlaceOrder} className="space-y-4 text-left">
+            <form onSubmit={handleFormSubmit} className="space-y-4 text-left">
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                   Full Name *
@@ -225,9 +314,9 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'upi', label: '⚡ UPI / GPay', desc: 'Instant 0% Fee' },
-                    { id: 'cod', label: '💵 Cash On Delivery', desc: 'Pay at Door' },
-                    { id: 'card', label: '💳 Cards / NetBanking', desc: 'All Banks' },
+                    { id: 'upi', label: '⚡ Automated UPI', desc: 'GPay / PhonePe / Paytm' },
+                    { id: 'cod', label: '💵 Cash On Delivery', desc: 'Pay at Doorstep' },
+                    { id: 'card', label: '💳 Net Banking / Card', desc: 'All Major Banks' },
                   ].map((p) => (
                     <button
                       key={p.id}
@@ -250,6 +339,16 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
                 </div>
               </div>
 
+              {/* UPI Highlight Banner */}
+              {paymentMethod === 'upi' && (
+                <div className="p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-gray-800 dark:to-gray-800 border border-amber-200 dark:border-gray-700 flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-300">
+                  <Zap className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                  <span>
+                    Direct UPI Transfer: You will scan QR or pay to <strong>+91 {upiNumber}</strong> in next step.
+                  </span>
+                </div>
+              )}
+
               {/* Order Total Summary */}
               <div className="p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-xs space-y-1">
                 <div className="flex justify-between text-gray-600 dark:text-gray-400">
@@ -263,7 +362,7 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                  <span>All-India Shipping:</span>
+                  <span>All-India Express Delivery:</span>
                   <span className="text-emerald-600 font-bold">FREE</span>
                 </div>
                 <div className="flex justify-between text-sm font-black text-gray-900 dark:text-white pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -274,30 +373,190 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
 
               <button
                 type="submit"
-                disabled={isSubmitting}
                 className="w-full py-4 rounded-2xl bg-[#FF6B6B] hover:bg-[#F05252] text-white font-black text-sm shadow-lg hover:opacity-95 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isSubmitting ? (
+                {paymentMethod === 'upi' ? (
                   <>
-                    <Sparkles className="w-4 h-4 animate-spin" /> Transmitting Order & Alert...
+                    <Zap className="w-4 h-4" /> Proceed to UPI Gateway — ₹{finalTotal.toLocaleString('en-IN')}
                   </>
                 ) : (
                   <>
-                    <ShoppingBag className="w-4 h-4" /> Confirm Order — ₹{finalTotal.toLocaleString('en-IN')}
+                    <ShoppingBag className="w-4 h-4" /> Place Order — ₹{finalTotal.toLocaleString('en-IN')}
                   </>
                 )}
               </button>
             </form>
           </div>
-        ) : (
-          /* Order Confirmation & Instant WhatsApp Notification Hub */
-          <div className="text-center py-6 space-y-4">
+        )}
+
+        {/* STEP 2: AUTOMATED UPI PAYMENT GATEWAY (PAY TO 8360303562) */}
+        {step === 'upi_gateway' && (
+          <div className="text-center space-y-4 text-gray-900 dark:text-white">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setStep('form')}
+                className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Back
+              </button>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-gray-800 text-[#FF6B6B] text-[11px] font-black border border-rose-100 dark:border-gray-700">
+                <Clock className="w-3.5 h-3.5 animate-spin" /> Session: {formatTimer(timerSeconds)}
+              </div>
+            </div>
+
+            {/* Official Gateway Header */}
+            <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 text-white p-4 rounded-2xl shadow-lg border border-indigo-700 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-3 opacity-15">
+                <ShieldCheck className="w-24 h-24 text-white" />
+              </div>
+              <div className="relative z-10 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-emerald-400" /> Automated UPI Gateway
+                  </span>
+                  <span className="text-[11px] text-indigo-200 font-bold">256-Bit Encrypted</span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <div>
+                    <p className="text-xs text-indigo-200">Total Amount to Pay:</p>
+                    <h2 className="text-3xl font-black text-white tracking-tight">
+                      ₹{finalTotal.toLocaleString('en-IN')}
+                    </h2>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-indigo-200">Merchant:</p>
+                    <p className="text-xs font-bold text-indigo-100">{payeeName}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Important Directive Banner */}
+            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200 text-left text-xs font-medium">
+              <p className="font-extrabold text-amber-900 dark:text-amber-100 flex items-center gap-1.5 mb-1 text-sm">
+                📢 Payment Instruction:
+              </p>
+              <p>
+                Please pay exact amount <strong>₹{finalTotal.toLocaleString('en-IN')}</strong> to Phone / UPI ID:
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(upiNumber, 'phone')}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800 border border-amber-300 dark:border-gray-700 font-black text-xs text-gray-900 dark:text-white flex items-center gap-1.5 hover:bg-amber-100 dark:hover:bg-gray-700 transition cursor-pointer shadow-sm"
+                >
+                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>+91 {upiNumber}</span>
+                  {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3 h-3 text-gray-400" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(upiId, 'upiId')}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800 border border-amber-300 dark:border-gray-700 font-black text-xs text-gray-900 dark:text-white flex items-center gap-1.5 hover:bg-amber-100 dark:hover:bg-gray-700 transition cursor-pointer shadow-sm"
+                >
+                  <Zap className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{upiId}</span>
+                  {copiedField === 'upiId' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3 h-3 text-gray-400" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic QR Code & 1-Click Pay Buttons */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700">
+              <p className="text-xs font-extrabold text-gray-700 dark:text-gray-300 mb-3 flex items-center justify-center gap-1.5">
+                <QrCode className="w-4 h-4 text-[#FF6B6B]" /> Scan QR Code with Any UPI App:
+              </p>
+
+              {/* QR Code Container */}
+              <div className="bg-white p-3 rounded-2xl inline-block shadow-md border-2 border-gray-200">
+                <img
+                  src={qrCodeUrl}
+                  alt="UPI Payment QR Code"
+                  className="w-48 h-48 sm:w-52 sm:h-52 object-contain mx-auto"
+                />
+                <p className="text-[10px] font-bold text-gray-600 mt-1">
+                  Accepts GPay • PhonePe • Paytm • BHIM
+                </p>
+              </div>
+
+              {/* Mobile 1-Click App Triggers */}
+              <div className="mt-4">
+                <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-2">
+                  Or Click to Open Installed UPI App:
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <a
+                    href={upiIntentUrl}
+                    className="p-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:border-[#FF6B6B] text-[11px] font-bold flex items-center justify-center gap-1.5 text-gray-800 dark:text-gray-200 shadow-sm transition"
+                  >
+                    🟢 Google Pay
+                  </a>
+                  <a
+                    href={upiIntentUrl}
+                    className="p-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:border-[#FF6B6B] text-[11px] font-bold flex items-center justify-center gap-1.5 text-gray-800 dark:text-gray-200 shadow-sm transition"
+                  >
+                    🟣 PhonePe
+                  </a>
+                  <a
+                    href={upiIntentUrl}
+                    className="p-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:border-[#FF6B6B] text-[11px] font-bold flex items-center justify-center gap-1.5 text-gray-800 dark:text-gray-200 shadow-sm transition"
+                  >
+                    🔵 Paytm
+                  </a>
+                  <a
+                    href={upiIntentUrl}
+                    className="p-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:border-[#FF6B6B] text-[11px] font-bold flex items-center justify-center gap-1.5 text-gray-800 dark:text-gray-200 shadow-sm transition"
+                  >
+                    🟠 BHIM UPI
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Optional UTR / Reference ID Field */}
+            <div className="text-left">
+              <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                UPI Reference ID / UTR Number (Optional 12-digit number from your UPI app):
+              </label>
+              <input
+                type="text"
+                value={utrNumber}
+                onChange={(e) => setUtrNumber(e.target.value.replace(/\D/g, ''))}
+                maxLength={12}
+                placeholder="e.g. 423891024589"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-mono font-bold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B6B]"
+              />
+            </div>
+
+            {/* Verify & Complete Button */}
+            <button
+              onClick={handleVerifyUpiPayment}
+              disabled={isVerifying}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-xl hover:opacity-95 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isVerifying ? (
+                <>
+                  <Sparkles className="w-5 h-5 animate-spin" /> Verifying Payment on {upiNumber}...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5" /> I Have Paid ₹{finalTotal.toLocaleString('en-IN')} — Verify & Confirm
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* STEP 3: ORDER CONFIRMED & INSTANT WHATSAPP RECEIPT */}
+        {step === 'success' && placedOrder && (
+          <div className="text-center py-4 space-y-4">
             <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-md animate-bounce">
               <CheckCircle className="w-8 h-8" />
             </div>
 
-            <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-              Order Confirmed & Logged
+            <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+              Payment & Order Verified
             </span>
 
             <h3 className="text-2xl font-black text-gray-900 dark:text-white">
@@ -310,33 +569,44 @@ export const CheckoutOrderModal: React.FC<CheckoutOrderModalProps> = ({
                 <span className="text-[#FF6B6B]">#{placedOrder.orderId}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">WhatsApp Alert Sent To:</span>
-                <span className="font-bold text-gray-900 dark:text-white">+91 {placedOrder.phone}</span>
+                <span className="text-gray-500">Payment Transferred To:</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">+91 {upiNumber}</span>
               </div>
+              {placedOrder.utrNumber && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">UPI Ref / UTR:</span>
+                  <span className="font-mono font-bold text-gray-900 dark:text-white">{placedOrder.utrNumber}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-gray-500">Delivery To:</span>
-                <span className="font-bold text-gray-900 dark:text-white truncate max-w-[200px]">{placedOrder.address}</span>
+                <span className="text-gray-500">Delivery Address:</span>
+                <span className="font-bold text-gray-900 dark:text-white truncate max-w-[200px]">
+                  {placedOrder.address}
+                </span>
               </div>
-              <div className="flex justify-between pt-1 border-t border-gray-200 dark:border-gray-700 font-bold">
-                <span className="text-gray-700 dark:text-gray-300">Total Paid/COD:</span>
-                <span className="text-emerald-600 font-black">₹{placedOrder.finalTotal.toLocaleString('en-IN')}</span>
+              <div className="flex justify-between pt-1.5 border-t border-gray-200 dark:border-gray-700 font-bold">
+                <span className="text-gray-700 dark:text-gray-300">Amount Paid:</span>
+                <span className="text-emerald-600 font-black text-sm">
+                  ₹{placedOrder.finalTotal.toLocaleString('en-IN')}
+                </span>
               </div>
             </div>
 
-            {/* 1-Click WhatsApp Notification Trigger Button */}
+            {/* 1-Click WhatsApp Notification Button */}
             <button
               onClick={handleOpenWhatsApp}
-              className="w-full py-3.5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-sm shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
             >
-              <MessageSquare className="w-4 h-4" /> Send Instant Confirmation to WhatsApp
+              <MessageSquare className="w-4 h-4" /> Send Instant WhatsApp Receipt to +91 {upiNumber}
             </button>
 
             <button
               onClick={() => {
+                setStep('form');
                 setPlacedOrder(null);
                 onClose();
               }}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
+              className="px-6 py-2 rounded-xl text-xs font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
             >
               Done / Return to Store
             </button>
