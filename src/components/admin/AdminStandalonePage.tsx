@@ -26,6 +26,8 @@ import {
   Store,
   Barcode,
   Sparkles,
+  RefreshCw,
+  Cloud,
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { cozyAudio } from '../../utils/audioSynth';
@@ -47,6 +49,8 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
     updateSettings,
     updateOrderStatus,
     deleteOrder,
+    isCloudSyncing,
+    syncWithCloud,
   } = useStore();
 
   // Authentication State
@@ -231,7 +235,7 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
                 {settings.ownerName || 'Vikas Kumar'} Atelier
               </h1>
               <span className="text-[10px] font-black uppercase tracking-widest bg-emerald-950 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-700">
-                LIVE SYNC ACTIVE
+                GLOBAL CLOUD DATABASE LIVE
               </span>
             </div>
             <p className="text-[11px] text-gray-400">
@@ -242,6 +246,18 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
 
         {/* Action Header Buttons */}
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => {
+              cozyAudio.playSoftTap();
+              syncWithCloud();
+            }}
+            disabled={isCloudSyncing}
+            className="px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-gray-600 shadow-sm"
+            title="Fetch latest customer orders from global cloud database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin text-[#FF6B6B]' : 'text-emerald-400'}`} />
+            <span className="hidden sm:inline">{isCloudSyncing ? 'Syncing...' : 'Cloud Sync'}</span>
+          </button>
           <button
             onClick={exportCSV}
             className="px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-gray-600"

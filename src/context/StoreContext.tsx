@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { products as defaultProducts } from '../data/products';
 import { Product } from '../types';
+import { fetchAllCloudOrders, pushOrderToCloud, updateCloudOrderStatus } from '../services/cloudOrders';
 
 export interface CouponItem {
   code: string;
@@ -21,6 +22,7 @@ interface StoreContextType {
   coupons: CouponItem[];
   settings: StoreSettings;
   orders: any[];
+  isCloudSyncing: boolean;
   updateProductPrice: (productId: string, newPrice: number) => void;
   addCoupon: (code: string, discountPercent: number, description?: string) => void;
   deleteCoupon: (code: string) => void;
@@ -28,8 +30,9 @@ interface StoreContextType {
   updateSettings: (newSettings: Partial<StoreSettings>) => void;
   updateOrderStatus: (orderId: string, newStatus: string) => void;
   deleteOrder: (orderId: string) => void;
-  addOrder: (orderData: any) => void;
+  addOrder: (orderData: any) => Promise<void>;
   refreshData: () => void;
+  syncWithCloud: () => Promise<void>;
 }
 
 const defaultCoupons: CouponItem[] = [
@@ -50,41 +53,123 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 1. Products State
   const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('vk_admin_products');
-    return saved ? JSON.parse(saved) : defaultProducts;
+    try {
+      const saved = localStorage.getItem('vk_admin_products');
+      return saved ? JSON.parse(saved) : defaultProducts;
+    } catch {
+      return defaultProducts;
+    }
   });
 
   // 2. Coupons State
   const [coupons, setCoupons] = useState<CouponItem[]>(() => {
-    const saved = localStorage.getItem('vk_admin_coupons');
-    return saved ? JSON.parse(saved) : defaultCoupons;
+    try {
+      const saved = localStorage.getItem('vk_admin_coupons');
+      return saved ? JSON.parse(saved) : defaultCoupons;
+    } catch {
+      return defaultCoupons;
+    }
   });
 
   // 3. Settings State
   const [settings, setSettings] = useState<StoreSettings>(() => {
-    const saved = localStorage.getItem('vk_admin_settings');
-    return saved ? JSON.parse(saved) : defaultSettings;
+    try {
+      const saved = localStorage.getItem('vk_admin_settings');
+      return saved ? JSON.parse(saved) : defaultSettings;
+    } catch {
+      return defaultSettings;
+    }
   });
 
   // 4. Orders State
   const [orders, setOrders] = useState<any[]>(() => {
-    const saved = localStorage.getItem('vk_orders');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('vk_orders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
-  // Sync across tabs / events
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+
+  // Sync with Global Cloud Database
+  const syncWithCloud = useCallback(async () => {
+    try {
+      setIsCloudSyncing(true);
+      const cloudOrders = await fetchAllCloudOrders();
+      if (cloudOrders && cloudOrders.length > 0) {
+        setOrders((prevLocalOrders) => {
+          // Normalize and merge unique orders by orderId / id
+          const map = new Map<string, any>();
+          
+          // First add cloud orders
+          cloudOrders.forEach((co) => {
+            const key = co.orderId || co.id;
+            if (key) {
+              map.set(key, {
+                ...co,
+                orderId: co.orderId || co.id,
+                id: co.id || co.orderId,
+                fullName: co.fullName || co.customerName,
+                phone: co.phone || co.customerPhone,
+                finalTotal: co.finalTotal || co.total,
+                utrNumber: co.utrNumber || co.utr,
+              });
+            }
+          });
+
+          // Merge local orders (local edits might be newer)
+          prevLocalOrders.forEach((lo) => {
+            const key = lo.orderId || lo.id;
+            if (key && !map.has(key)) {
+              map.set(key, lo);
+            }
+          });
+
+          const merged = Array.from(map.values()).sort((a, b) => {
+            const timeA = new Date(a.timestamp || a.date || 0).getTime();
+            const timeB = new Date(b.timestamp || b.date || 0).getTime();
+            return timeB - timeA;
+          });
+
+          localStorage.setItem('vk_orders', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    } catch (e) {
+      console.warn('[StoreContext] Cloud sync error:', e);
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, []);
+
+  // Initial cloud fetch and recurring auto-poll every 12 seconds
+  useEffect(() => {
+    syncWithCloud();
+
+    const interval = setInterval(() => {
+      syncWithCloud();
+    }, 12000);
+
+    return () => clearInterval(interval);
+  }, [syncWithCloud]);
+
+  // Sync across tabs / window events
   const refreshData = () => {
-    const savedProducts = localStorage.getItem('vk_admin_products');
-    if (savedProducts) setProducts(JSON.parse(savedProducts));
+    try {
+      const savedProducts = localStorage.getItem('vk_admin_products');
+      if (savedProducts) setProducts(JSON.parse(savedProducts));
 
-    const savedCoupons = localStorage.getItem('vk_admin_coupons');
-    if (savedCoupons) setCoupons(JSON.parse(savedCoupons));
+      const savedCoupons = localStorage.getItem('vk_admin_coupons');
+      if (savedCoupons) setCoupons(JSON.parse(savedCoupons));
 
-    const savedSettings = localStorage.getItem('vk_admin_settings');
-    if (savedSettings) setSettings(JSON.parse(savedSettings));
+      const savedSettings = localStorage.getItem('vk_admin_settings');
+      if (savedSettings) setSettings(JSON.parse(savedSettings));
 
-    const savedOrders = localStorage.getItem('vk_orders');
-    if (savedOrders) setOrders(JSON.parse(savedOrders));
+      const savedOrders = localStorage.getItem('vk_orders');
+      if (savedOrders) setOrders(JSON.parse(savedOrders));
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -151,24 +236,43 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateOrderStatus = (orderId: string, newStatus: string) => {
-    const updated = orders.map((o) => (o.orderId === orderId ? { ...o, status: newStatus } : o));
+    const updated = orders.map((o) => (o.orderId === orderId || o.id === orderId ? { ...o, status: newStatus } : o));
     setOrders(updated);
     localStorage.setItem('vk_orders', JSON.stringify(updated));
     triggerStoreUpdate();
+
+    // Push status update to global cloud DB asynchronously
+    updateCloudOrderStatus(orderId, newStatus).catch(() => {});
   };
 
   const deleteOrder = (orderId: string) => {
-    const updated = orders.filter((o) => o.orderId !== orderId);
+    const updated = orders.filter((o) => o.orderId !== orderId && o.id !== orderId);
     setOrders(updated);
     localStorage.setItem('vk_orders', JSON.stringify(updated));
     triggerStoreUpdate();
   };
 
-  const addOrder = (orderData: any) => {
-    const updated = [orderData, ...orders];
+  const addOrder = async (orderData: any) => {
+    const normalized = {
+      ...orderData,
+      id: orderData.orderId || orderData.id,
+      orderId: orderData.orderId || orderData.id,
+      fullName: orderData.fullName || orderData.customerName,
+      phone: orderData.phone || orderData.customerPhone,
+      finalTotal: orderData.finalTotal || orderData.total,
+      utrNumber: orderData.utrNumber || orderData.utr,
+      timestamp: orderData.timestamp || orderData.date || new Date().toISOString(),
+    };
+
+    const updated = [normalized, ...orders.filter((o) => (o.orderId || o.id) !== normalized.id)];
     setOrders(updated);
     localStorage.setItem('vk_orders', JSON.stringify(updated));
     triggerStoreUpdate();
+
+    // Instantly push to global cloud database
+    await pushOrderToCloud(normalized).catch((err) => {
+      console.warn('[StoreContext] Cloud push failed, queued locally:', err);
+    });
   };
 
   return (
@@ -178,6 +282,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         coupons,
         settings,
         orders,
+        isCloudSyncing,
         updateProductPrice,
         addCoupon,
         deleteCoupon,
@@ -187,6 +292,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteOrder,
         addOrder,
         refreshData,
+        syncWithCloud,
       }}
     >
       {children}
