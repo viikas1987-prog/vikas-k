@@ -9,6 +9,14 @@
     color: #1F2937;
     overflow-x: hidden;
   }
+
+  img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
 }
 
 /* Custom card and button shadows */
