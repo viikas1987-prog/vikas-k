@@ -23,23 +23,39 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const currentProduct = products.find((p) => p.id === product.id) || product;
 
-  const [selectedColor, setSelectedColor] = useState(currentProduct.colors[0]);
-  const [selectedSize, setSelectedSize] = useState(currentProduct.sizes[0] || 'Standard');
+  const [selectedColor, setSelectedColor] = useState(
+    currentProduct?.colors?.[0] || { name: 'Standard', hex: '#FF6B6B' }
+  );
+  const [selectedSize, setSelectedSize] = useState(
+    currentProduct?.sizes?.[0] || 'Standard'
+  );
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [isAdded, setIsAdded] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
 
+  React.useEffect(() => {
+    if (product) {
+      setSelectedColor(product.colors?.[0] || { name: 'Standard', hex: '#FF6B6B' });
+      setSelectedSize(product.sizes?.[0] || 'Standard');
+      setActiveImageIndex(0);
+      setQuantity(1);
+      setIsZoomed(false);
+    }
+  }, [product]);
+
   const isWishlisted = wishlist.includes(currentProduct.id);
 
   const handleAddToCart = () => {
-    cozyAudio.playCelebration();
+    try {
+      cozyAudio.playCelebration();
+    } catch (err) {}
     addToCart(currentProduct, selectedColor, selectedSize, quantity);
     setIsAdded(true);
     setTimeout(() => {
       setIsAdded(false);
       onClose();
-    }, 1200);
+    }, 1000);
   };
 
   const images = product.images && product.images.length > 0 ? product.images : ['/images/products/tinkle-girls-combo-top.png'];

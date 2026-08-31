@@ -94,73 +94,83 @@ export const CartDrawer: React.FC = () => {
         {/* Cart Items List or Empty State */}
         <div className="flex-1 overflow-y-auto py-3 space-y-3">
           {cart.length > 0 ? (
-            cart.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 p-3 rounded-2xl bg-white/80 dark:bg-cozy-night-cardHover border border-cozy-blush/40 dark:border-cozy-night-border shadow-sm"
-              >
-                <img
-                  src={item.product.images[0]}
-                  alt={item.product.name}
-                  className="w-16 h-16 object-cover rounded-xl shadow-sm"
-                />
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-xs font-bold text-[#3E2723] dark:text-white truncate">
-                    {item.product.name}
-                  </h4>
-                  <div className="flex items-center gap-2 text-[11px] text-cozy-warmBrown/70 dark:text-cozy-night-textMuted mt-0.5">
-                    <span className="flex items-center gap-1">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full inline-block"
-                        style={{ backgroundColor: item.selectedColor.hex }}
-                      />
-                      {item.selectedColor.name}
-                    </span>
-                    <span>•</span>
-                    <span>{item.selectedSize}</span>
-                  </div>
+            cart.map((item) => {
+              if (!item || !item.product) return null;
+              const itemImg = item.product.images?.[0] || '/images/products/tinkle-girls-combo-top.png';
+              const itemName = item.product.name || 'Cozy Cuddle Item';
+              const itemPrice = typeof item.product.price === 'number' ? item.product.price : 0;
+              const colorHex = item.selectedColor?.hex || '#FF6B6B';
+              const colorName = item.selectedColor?.name || 'Standard';
+              const itemSize = item.selectedSize || 'Standard';
 
-                  {item.customEmbroidery && (
-                    <div className="text-[10px] text-[#FF6B6B] font-semibold mt-0.5 flex items-center gap-1">
-                      <span>🧵 Stitched: "{item.customEmbroidery.babyName}"</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs font-bold text-cozy-warmBrown dark:text-white">
-                      ₹{(item.product.price + (item.customEmbroidery ? 199 : 0)).toLocaleString('en-IN')}
-                    </span>
-
-                    {/* Qty controller */}
-                    <div className="flex items-center gap-1.5 border border-cozy-blush dark:border-cozy-night-border rounded-xl px-1.5 py-0.5 bg-cozy-cream dark:bg-cozy-night-card">
-                      <button
-                        onClick={() => updateQuantity(item.id, -1)}
-                        className="text-xs font-bold text-cozy-warmBrown dark:text-white hover:text-cozy-rose px-1 cursor-pointer"
-                      >
-                        -
-                      </button>
-                      <span className="text-xs font-bold px-1 text-cozy-warmBrown dark:text-white">
-                        {item.quantity}
-                      </span>
-                      <button
-                        onClick={() => updateQuantity(item.id, 1)}
-                        className="text-xs font-bold text-cozy-warmBrown dark:text-white hover:text-cozy-rose px-1 cursor-pointer"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  className="text-cozy-warmBrown/40 hover:text-red-500 transition p-1 cursor-pointer"
-                  title="Remove"
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 p-3 rounded-2xl bg-white/80 dark:bg-cozy-night-cardHover border border-cozy-blush/40 dark:border-cozy-night-border shadow-sm"
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))
+                  <img
+                    src={itemImg}
+                    alt={itemName}
+                    className="w-16 h-16 object-cover rounded-xl shadow-sm"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-bold text-[#3E2723] dark:text-white truncate">
+                      {itemName}
+                    </h4>
+                    <div className="flex items-center gap-2 text-[11px] text-cozy-warmBrown/70 dark:text-cozy-night-textMuted mt-0.5">
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full inline-block"
+                          style={{ backgroundColor: colorHex }}
+                        />
+                        {colorName}
+                      </span>
+                      <span>•</span>
+                      <span>{itemSize}</span>
+                    </div>
+
+                    {item.customEmbroidery && (
+                      <div className="text-[10px] text-[#FF6B6B] font-semibold mt-0.5 flex items-center gap-1">
+                        <span>🧵 Stitched: "{item.customEmbroidery.babyName}"</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs font-bold text-cozy-warmBrown dark:text-white">
+                        ₹{(itemPrice + (item.customEmbroidery ? 199 : 0)).toLocaleString('en-IN')}
+                      </span>
+
+                      {/* Qty controller */}
+                      <div className="flex items-center gap-1.5 border border-cozy-blush dark:border-cozy-night-border rounded-xl px-1.5 py-0.5 bg-cozy-cream dark:bg-cozy-night-card">
+                        <button
+                          onClick={() => updateQuantity(item.id, -1)}
+                          className="text-xs font-bold text-cozy-warmBrown dark:text-white hover:text-cozy-rose px-1 cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <span className="text-xs font-bold px-1 text-cozy-warmBrown dark:text-white">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() => updateQuantity(item.id, 1)}
+                          className="text-xs font-bold text-cozy-warmBrown dark:text-white hover:text-cozy-rose px-1 cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => removeFromCart(item.id)}
+                    className="text-cozy-warmBrown/40 hover:text-red-500 transition p-1 cursor-pointer"
+                    title="Remove"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })
           ) : (
             <div className="text-center py-16 flex flex-col items-center">
               <span className="text-5xl">🛍️</span>

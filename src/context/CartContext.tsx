@@ -33,13 +33,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { settings, products } = useStore();
 
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('cozy-cart');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('cozy-cart');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (item) => item && item.product && typeof item.product.price === 'number'
+      );
+    } catch (e) {
+      return [];
+    }
   });
 
   const [wishlist, setWishlist] = useState<string[]>(() => {
-    const saved = localStorage.getItem('cozy-wishlist');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('cozy-wishlist');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -51,6 +64,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     setCart((prevCart) =>
       prevCart.map((item) => {
+        if (!item?.product?.id) return item;
         const liveProduct = products.find((p) => p.id === item.product.id);
         if (liveProduct && liveProduct.price !== item.product.price) {
           return { ...item, product: { ...item.product, price: liveProduct.price } };
@@ -61,11 +75,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [products]);
 
   useEffect(() => {
-    localStorage.setItem('cozy-cart', JSON.stringify(cart));
+    try {
+      localStorage.setItem('cozy-cart', JSON.stringify(cart));
+    } catch (e) {}
   }, [cart]);
 
   useEffect(() => {
-    localStorage.setItem('cozy-wishlist', JSON.stringify(wishlist));
+    try {
+      localStorage.setItem('cozy-wishlist', JSON.stringify(wishlist));
+    } catch (e) {}
   }, [wishlist]);
 
   const addToCart = (
@@ -75,9 +93,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     quantity: number = 1,
     embroidery?: CustomEmbroidery
   ) => {
-    cozyAudio.playCelebration();
-    const selectedColor = color || product.colors[0];
-    const selectedSize = size || product.sizes[0] || 'One Size';
+    if (!product) return;
+    try {
+      cozyAudio.playCelebration();
+    } catch (err) {}
+
+    const selectedColor =
+      color || product.colors?.[0] || { name: 'Standard', hex: '#FF6B6B' };
+    const selectedSize = size || product.sizes?.[0] || 'Standard';
     const embroideryKey = embroidery ? `${embroidery.babyName}-${embroidery.threadColor}` : 'none';
     const cartItemId = `${product.id}-${selectedColor.name}-${selectedSize}-${embroideryKey}`;
 
