@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { products as defaultProducts } from '../data/products';
 import { Product } from '../types';
-import { fetchAllCloudOrders, pushOrderToCloud, updateCloudOrderStatus } from '../services/cloudOrders';
+import {
+  fetchCloudCatalog,
+  saveCloudCatalog,
+  fetchAllCloudOrders,
+  pushOrderToCloud,
+  updateCloudOrderStatus,
+} from '../services/cloudStore';
 
 export interface CouponItem {
   code: string;
@@ -23,12 +29,15 @@ interface StoreContextType {
   settings: StoreSettings;
   orders: any[];
   isCloudSyncing: boolean;
-  updateProductPrice: (productId: string, newPrice: number) => void;
-  addCoupon: (code: string, discountPercent: number, description?: string) => void;
-  deleteCoupon: (code: string) => void;
+  lastCloudSyncTime: string | null;
+  updateProductPrice: (productId: string, newPrice: number) => Promise<void>;
+  addProduct: (product: Product) => Promise<void>;
+  deleteProduct: (productId: string) => Promise<void>;
+  addCoupon: (code: string, discountPercent: number, description?: string) => Promise<void>;
+  deleteCoupon: (code: string) => Promise<void>;
   validateCoupon: (code: string) => { valid: boolean; discountPercent: number; description: string };
-  updateSettings: (newSettings: Partial<StoreSettings>) => void;
-  updateOrderStatus: (orderId: string, newStatus: string) => void;
+  updateSettings: (newSettings: Partial<StoreSettings>) => Promise<void>;
+  updateOrderStatus: (orderId: string, newStatus: string) => Promise<void>;
   deleteOrder: (orderId: string) => void;
   addOrder: (orderData: any) => Promise<void>;
   refreshData: () => void;
@@ -92,18 +101,35 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
 
-  // Sync with Global Cloud Database
+  // Sync both Catalog (Products, Prices, Coupons, Settings) and Orders from Cloud
   const syncWithCloud = useCallback(async () => {
     try {
       setIsCloudSyncing(true);
+
+      // 1. Fetch Cloud Catalog
+      const cloudCatalog = await fetchCloudCatalog();
+      if (cloudCatalog) {
+        if (Array.isArray(cloudCatalog.products) && cloudCatalog.products.length > 0) {
+          setProducts(cloudCatalog.products);
+          localStorage.setItem('vk_admin_products', JSON.stringify(cloudCatalog.products));
+        }
+        if (Array.isArray(cloudCatalog.coupons) && cloudCatalog.coupons.length > 0) {
+          setCoupons(cloudCatalog.coupons);
+          localStorage.setItem('vk_admin_coupons', JSON.stringify(cloudCatalog.coupons));
+        }
+        if (cloudCatalog.settings && cloudCatalog.settings.ownerPhone) {
+          setSettings(cloudCatalog.settings);
+          localStorage.setItem('vk_admin_settings', JSON.stringify(cloudCatalog.settings));
+        }
+      }
+
+      // 2. Fetch Cloud Orders
       const cloudOrders = await fetchAllCloudOrders();
       if (cloudOrders && cloudOrders.length > 0) {
         setOrders((prevLocalOrders) => {
-          // Normalize and merge unique orders by orderId / id
           const map = new Map<string, any>();
-          
-          // First add cloud orders
           cloudOrders.forEach((co) => {
             const key = co.orderId || co.id;
             if (key) {
@@ -119,7 +145,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           });
 
-          // Merge local orders (local edits might be newer)
           prevLocalOrders.forEach((lo) => {
             const key = lo.orderId || lo.id;
             if (key && !map.has(key)) {
@@ -137,6 +162,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return merged;
         });
       }
+
+      setLastCloudSyncTime(new Date().toLocaleTimeString());
     } catch (e) {
       console.warn('[StoreContext] Cloud sync error:', e);
     } finally {
@@ -144,18 +171,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // Initial cloud fetch and recurring auto-poll every 12 seconds
+  // Poll cloud database every 10 seconds so any customer anywhere immediately sees updated prices & new catalogue items
   useEffect(() => {
     syncWithCloud();
 
     const interval = setInterval(() => {
       syncWithCloud();
-    }, 12000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [syncWithCloud]);
 
-  // Sync across tabs / window events
   const refreshData = () => {
     try {
       const savedProducts = localStorage.getItem('vk_admin_products');
@@ -189,15 +215,46 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     window.dispatchEvent(new Event('vk_store_updated'));
   };
 
+  // Helper to persist catalog to cloud
+  const pushCatalogUpdate = async (updatedProducts: Product[], updatedCoupons: CouponItem[], updatedSettings: StoreSettings) => {
+    await saveCloudCatalog({
+      products: updatedProducts,
+      coupons: updatedCoupons,
+      settings: updatedSettings,
+    }).catch((err) => {
+      console.warn('[StoreContext] Failed to push catalog to cloud:', err);
+    });
+  };
+
   // ACTIONS
-  const updateProductPrice = (productId: string, newPrice: number) => {
+  const updateProductPrice = async (productId: string, newPrice: number) => {
     const updated = products.map((p) => (p.id === productId ? { ...p, price: newPrice } : p));
     setProducts(updated);
     localStorage.setItem('vk_admin_products', JSON.stringify(updated));
     triggerStoreUpdate();
+
+    await pushCatalogUpdate(updated, coupons, settings);
   };
 
-  const addCoupon = (code: string, discountPercent: number, description?: string) => {
+  const addProduct = async (newProduct: Product) => {
+    const updated = [newProduct, ...products.filter((p) => p.id !== newProduct.id)];
+    setProducts(updated);
+    localStorage.setItem('vk_admin_products', JSON.stringify(updated));
+    triggerStoreUpdate();
+
+    await pushCatalogUpdate(updated, coupons, settings);
+  };
+
+  const deleteProduct = async (productId: string) => {
+    const updated = products.filter((p) => p.id !== productId);
+    setProducts(updated);
+    localStorage.setItem('vk_admin_products', JSON.stringify(updated));
+    triggerStoreUpdate();
+
+    await pushCatalogUpdate(updated, coupons, settings);
+  };
+
+  const addCoupon = async (code: string, discountPercent: number, description?: string) => {
     const cleanCode = code.trim().toUpperCase();
     const newCoupon: CouponItem = {
       code: cleanCode,
@@ -210,13 +267,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCoupons(updated);
     localStorage.setItem('vk_admin_coupons', JSON.stringify(updated));
     triggerStoreUpdate();
+
+    await pushCatalogUpdate(products, updated, settings);
   };
 
-  const deleteCoupon = (code: string) => {
+  const deleteCoupon = async (code: string) => {
     const updated = coupons.filter((c) => c.code !== code);
     setCoupons(updated);
     localStorage.setItem('vk_admin_coupons', JSON.stringify(updated));
     triggerStoreUpdate();
+
+    await pushCatalogUpdate(products, updated, settings);
   };
 
   const validateCoupon = (inputCode: string) => {
@@ -228,21 +289,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { valid: false, discountPercent: 0, description: '' };
   };
 
-  const updateSettings = (newSettings: Partial<StoreSettings>) => {
+  const updateSettings = async (newSettings: Partial<StoreSettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
     localStorage.setItem('vk_admin_settings', JSON.stringify(updated));
     triggerStoreUpdate();
+
+    await pushCatalogUpdate(products, coupons, updated);
   };
 
-  const updateOrderStatus = (orderId: string, newStatus: string) => {
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
     const updated = orders.map((o) => (o.orderId === orderId || o.id === orderId ? { ...o, status: newStatus } : o));
     setOrders(updated);
     localStorage.setItem('vk_orders', JSON.stringify(updated));
     triggerStoreUpdate();
 
-    // Push status update to global cloud DB asynchronously
-    updateCloudOrderStatus(orderId, newStatus).catch(() => {});
+    await updateCloudOrderStatus(orderId, newStatus).catch(() => {});
   };
 
   const deleteOrder = (orderId: string) => {
@@ -269,9 +331,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('vk_orders', JSON.stringify(updated));
     triggerStoreUpdate();
 
-    // Instantly push to global cloud database
     await pushOrderToCloud(normalized).catch((err) => {
-      console.warn('[StoreContext] Cloud push failed, queued locally:', err);
+      console.warn('[StoreContext] Cloud order push failed:', err);
     });
   };
 
@@ -283,7 +344,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         settings,
         orders,
         isCloudSyncing,
+        lastCloudSyncTime,
         updateProductPrice,
+        addProduct,
+        deleteProduct,
         addCoupon,
         deleteCoupon,
         validateCoupon,

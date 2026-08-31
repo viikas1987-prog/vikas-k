@@ -44,6 +44,8 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
     settings,
     orders,
     updateProductPrice,
+    addProduct,
+    deleteProduct,
     addCoupon,
     deleteCoupon,
     updateSettings,
@@ -70,6 +72,15 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
 
   // Local Product Edit State
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdCategory, setNewProdCategory] = useState<'clothes' | 'sleepwear' | 'nursery' | 'essentials' | 'gift-sets'>('clothes');
+  const [newProdPrice, setNewProdPrice] = useState(1499);
+  const [newProdOriginalPrice, setNewProdOriginalPrice] = useState(2199);
+  const [newProdDescription, setNewProdDescription] = useState('Handcrafted with certified 100% organic cotton for infant comfort.');
+  const [newProdImage, setNewProdImage] = useState('/images/products/boston-91-combo-pack.png');
+  const [newProdStock, setNewProdStock] = useState(25);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   // New Coupon State
   const [newCouponCode, setNewCouponCode] = useState('');
@@ -86,6 +97,61 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
     setOwnerPhoneInput(settings.ownerPhone);
     setThresholdInput(settings.freeGiftThreshold);
   }, [settings]);
+
+  const handleAddProductSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName.trim()) return;
+
+    setIsSavingProduct(true);
+    cozyAudio.playCelebration();
+
+    const newProduct: any = {
+      id: 'prod-' + Date.now().toString(36),
+      sku: 'VK-' + Math.floor(1000 + Math.random() * 9000),
+      name: newProdName.trim(),
+      brand: 'Vikas Kumar Atelier',
+      category: newProdCategory,
+      department: 'Infant & Baby Essentials',
+      price: Number(newProdPrice),
+      originalPrice: Number(newProdOriginalPrice),
+      discountPercent: Math.round(((newProdOriginalPrice - newProdPrice) / newProdOriginalPrice) * 100) || 20,
+      rating: 4.9,
+      reviewsCount: 1,
+      ratingBreakdown: { 5: 1, 4: 0, 3: 0, 2: 0, 1: 0 },
+      isNew: true,
+      inStock: true,
+      stockCount: Number(newProdStock),
+      deliveryDays: 3,
+      estimatedDelivery: '3-4 Business Days',
+      tagline: 'Handcrafted Organic Artisan Comfort',
+      description: newProdDescription,
+      features: [
+        '100% GOTS Certified Organic Fabric',
+        'Hypoallergenic & Breathable Weave',
+        'Reinforced Seams for Active Movements',
+      ],
+      specifications: {
+        Fabric: '100% Organic Pure Cotton',
+        Fit: 'Relaxed Comfort Fit',
+        Care: 'Machine Wash Delicate',
+      },
+      material: 'Organic Cotton',
+      softnessScore: 9.8,
+      colors: [
+        { name: 'Oatmeal Beige', hex: '#E6D7C3' },
+        { name: 'Sage Green', hex: '#9CAF88' },
+        { name: 'Blush Rose', hex: '#E8B4B8' },
+      ],
+      sizes: ['0-3M', '3-6M', '6-12M', '12-18M', '18-24M'],
+      images: [newProdImage || '/images/products/boston-91-combo-pack.png'],
+      modelType: 'romper',
+    };
+
+    await addProduct(newProduct);
+    setIsSavingProduct(false);
+    setIsAddProductModalOpen(false);
+    setNewProdName('');
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -583,15 +649,30 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
           {/* TAB 3: PRODUCTS & LIVE PRICE EDITOR */}
           {activeTab === 'products' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between bg-[#1E293B] p-4 rounded-3xl border border-gray-800 shadow-sm">
+              <div className="flex items-center justify-between bg-[#1E293B] p-4 rounded-3xl border border-gray-800 shadow-sm flex-wrap gap-3">
                 <div>
-                  <h3 className="text-sm font-black text-white">
-                    Live Product Catalog & Pricing Manager
-                  </h3>
-                  <p className="text-xs text-gray-400">
-                    ⚡ Changing a price here immediately updates the customer storefront cards, quick views, and shopping cart!
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-white">
+                      Live Product Catalog & Pricing Manager
+                    </h3>
+                    <span className="text-[10px] font-black uppercase tracking-widest bg-purple-950 text-purple-300 px-2 py-0.5 rounded-full border border-purple-800">
+                      WORLDWIDE AUTO-SYNC
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    ⚡ Changes made here are saved to the cloud and automatically update on the website worldwide!
                   </p>
                 </div>
+
+                <button
+                  onClick={() => {
+                    cozyAudio.playSoftTap();
+                    setIsAddProductModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 rounded-2xl bg-[#FF6B6B] hover:bg-[#F05252] text-white text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-lg"
+                >
+                  <Plus className="w-4 h-4" /> Add New Catalogue Product
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -804,6 +885,132 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
       </div>
 
       {/* 4x6 Shipping Waybill with Barcode Modal */}
+      {/* ADD PRODUCT MODAL */}
+      {isAddProductModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#1E293B] rounded-3xl border border-gray-700 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in text-left">
+            <div className="flex items-center justify-between border-b border-gray-700 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-950 text-[#FF6B6B] flex items-center justify-center font-bold">
+                  ✨
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Add New Catalogue Item</h3>
+                  <p className="text-[11px] text-gray-400">Instantly publishes to cozycudlle.xyz worldwide</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddProductModalOpen(false)}
+                className="text-gray-400 hover:text-white text-xs font-bold px-2 py-1 bg-gray-800 rounded-lg cursor-pointer"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <form onSubmit={handleAddProductSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-gray-300 font-bold mb-1">Product Title / Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newProdName}
+                  onChange={(e) => setNewProdName(e.target.value)}
+                  placeholder="e.g. Organic Bamboo Sleepsuit & Cuddle Cap"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-white font-bold focus:outline-none focus:ring-2 focus:ring-[#FF6B6B]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-300 font-bold mb-1">Category *</label>
+                  <select
+                    value={newProdCategory}
+                    onChange={(e: any) => setNewProdCategory(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-white font-bold focus:outline-none focus:ring-2 focus:ring-[#FF6B6B]"
+                  >
+                    <option value="clothes">Clothes & Outfits</option>
+                    <option value="sleepwear">Sleepwear & Rompers</option>
+                    <option value="nursery">Nursery & Bedding</option>
+                    <option value="essentials">Essentials & Swaddles</option>
+                    <option value="gift-sets">Gift Sets & Keepsakes</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 font-bold mb-1">Initial Stock Units</label>
+                  <input
+                    type="number"
+                    value={newProdStock}
+                    onChange={(e) => setNewProdStock(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-white font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-300 font-bold mb-1">Selling Price (₹) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={newProdPrice}
+                    onChange={(e) => setNewProdPrice(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-emerald-400 font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 font-bold mb-1">MRP Price (₹)</label>
+                  <input
+                    type="number"
+                    value={newProdOriginalPrice}
+                    onChange={(e) => setNewProdOriginalPrice(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-gray-400 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 font-bold mb-1">Product Image URL or Path</label>
+                <input
+                  type="text"
+                  value={newProdImage}
+                  onChange={(e) => setNewProdImage(e.target.value)}
+                  placeholder="/images/products/boston-91-combo-pack.png or https://..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-white font-mono text-[11px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 font-bold mb-1">Short Description</label>
+                <textarea
+                  rows={2}
+                  value={newProdDescription}
+                  onChange={(e) => setNewProdDescription(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-gray-900 border border-gray-700 text-white font-medium"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddProductModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProduct}
+                  className="px-5 py-2.5 rounded-xl bg-[#FF6B6B] hover:bg-[#F05252] text-white font-black shadow-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSavingProduct ? 'Publishing...' : '✨ Publish to Store Worldwide'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {selectedOrderForWaybill && (
         <ShippingWaybillModal
           order={selectedOrderForWaybill}
