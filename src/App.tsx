@@ -23,6 +23,7 @@ import { CheckoutOrderModal } from './components/shop/CheckoutOrderModal';
 import { OrderTrackingModal } from './components/shop/OrderTrackingModal';
 import { FloatingSoundBar } from './components/layout/FloatingSoundBar';
 import { AdminStandalonePage } from './components/admin/AdminStandalonePage';
+import { DeliveryPartnerPage } from './components/delivery/DeliveryPartnerPage';
 import { Truck } from 'lucide-react';
 import { cozyAudio } from './utils/audioSynth';
 
@@ -38,6 +39,14 @@ export const App: React.FC = () => {
     );
   });
   const [trackingInitialOrderId, setTrackingInitialOrderId] = useState('');
+
+  const [isDeliveryPage, setIsDeliveryPage] = useState<boolean>(() => {
+    return (
+      window.location.hash.toLowerCase().includes('delivery') ||
+      window.location.search.toLowerCase().includes('delivery') ||
+      window.location.hash.toLowerCase().includes('courier')
+    );
+  });
 
   const [isAdminPage, setIsAdminPage] = useState<boolean>(() => {
     return (
@@ -60,6 +69,12 @@ export const App: React.FC = () => {
       }
     };
 
+    const isNowDelivery =
+        window.location.hash.toLowerCase().includes('delivery') ||
+        window.location.search.toLowerCase().includes('delivery') ||
+        window.location.hash.toLowerCase().includes('courier');
+      setIsDeliveryPage(isNowDelivery);
+
     window.addEventListener('hashchange', handleHashChange);
     window.addEventListener('popstate', handleHashChange);
     return () => {
@@ -67,6 +82,18 @@ export const App: React.FC = () => {
       window.removeEventListener('popstate', handleHashChange);
     };
   }, []);
+
+  // 0. IF DELIVERY PARTNER PORTAL: Render Isolated Delivery Partner Terminal
+  if (isDeliveryPage) {
+    return (
+      <DeliveryPartnerPage
+        onReturnToStore={() => {
+          window.location.hash = '';
+          setIsDeliveryPage(false);
+        }}
+      />
+    );
+  }
 
   // 1. IF ADMIN PORTAL URL: Render Dedicated Isolated Admin Page
   if (isAdminPage) {
