@@ -23,11 +23,14 @@ import { CheckoutOrderModal } from './components/shop/CheckoutOrderModal';
 import { OrderTrackingModal } from './components/shop/OrderTrackingModal';
 import { FloatingSoundBar } from './components/layout/FloatingSoundBar';
 import { AdminStandalonePage } from './components/admin/AdminStandalonePage';
+import { Truck } from 'lucide-react';
+import { cozyAudio } from './utils/audioSynth';
 
 import { Product } from './types';
 
 export const App: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState<boolean>(() => {
     return (
       window.location.hash.toLowerCase().includes('track') ||
@@ -35,6 +38,7 @@ export const App: React.FC = () => {
     );
   });
   const [trackingInitialOrderId, setTrackingInitialOrderId] = useState('');
+
   const [isAdminPage, setIsAdminPage] = useState<boolean>(() => {
     return (
       window.location.hash.toLowerCase().includes('admin') ||
@@ -51,7 +55,7 @@ export const App: React.FC = () => {
         window.location.pathname.toLowerCase().includes('admin');
       setIsAdminPage(isNowAdmin);
 
-      if (window.location.hash.toLowerCase().includes('track')) {
+      if (window.location.hash.toLowerCase().includes('track') || window.location.search.toLowerCase().includes('track')) {
         setIsTrackingModalOpen(true);
       }
     };
@@ -92,7 +96,13 @@ export const App: React.FC = () => {
     <div className="min-h-screen bg-[#FFF9F6] text-[#1F2937] font-inter selection:bg-[#FF6B6B] selection:text-white">
       
       {/* Top Clean Customer Navbar */}
-      <PhotoNavbar onNavigate={scrollToSection} onOpenTracking={() => { setTrackingInitialOrderId(''); setIsTrackingModalOpen(true); }} />
+      <PhotoNavbar
+        onNavigate={scrollToSection}
+        onOpenTracking={() => {
+          setTrackingInitialOrderId('');
+          setIsTrackingModalOpen(true);
+        }}
+      />
 
       {/* 1. TOONHUB 3D Character Figurine Carousel */}
       <div id="toonhub" className="pt-2">
@@ -105,54 +115,95 @@ export const App: React.FC = () => {
         onExploreBags={() => scrollToSection('catalog')}
       />
 
-      {/* 3. Newest Products in Indian Rupees (₹) matching photo */}
+      {/* 3. Newest Products in Indian Rupees (₹) */}
       <NewestProductsSection
         onOpenQuickView={(p) => setSelectedProduct(p)}
       />
 
-      {/* 4. Interactive 3D Name Embroidery Customizer */}
-      <CustomEmbroideryStudio />
+      {/* 4. Interactive 3D Customizer Studio */}
+      <div id="customizer">
+        <CustomEmbroideryStudio />
+      </div>
 
-      {/* 5. Build-a-Cuddle Keepsake Box Gift Chest */}
-      <BuildCuddleBox />
+      {/* 5. Build Cuddle Gift Box */}
+      <div id="gift-studio">
+        <BuildCuddleBox />
+      </div>
 
-      {/* 6. Sensory Softness Lab & GOTS Organic Certification */}
+      {/* 6. Softness & Sensorial Meter */}
       <SoftnessMeter />
 
-      {/* 7. Zen Baby Bubble Relaxation Corner */}
+      {/* 7. Bubble Pop Mini Delight */}
       <BubblePopGame />
 
-      {/* 8. 30-Second Milestone Matcher Quiz */}
+      {/* 8. Nursery Milestone Quiz */}
       <MilestoneQuiz />
 
-      {/* 9. Curated Moments Photo Gallery */}
-      <ProjectGallery />
+      {/* 9. Live Moments Project Gallery */}
+      <div id="gallery">
+        <ProjectGallery />
+      </div>
 
-      {/* 10. Founder's Corner: Vikas Kumar */}
-      <FounderStory />
-
-      {/* 11. Customer Reviews Hub & 5-Star Breakdown */}
+      {/* 10. Amazon India Verified Customer Reviews */}
       <AmazonReviewsSection />
 
-      {/* 12. Trust Badges & Guarantee */}
+      {/* 11. Founder Story */}
+      <div id="about">
+        <FounderStory />
+      </div>
+
+      {/* 12. Trust Badges */}
       <TrustBadges />
 
-      {/* 13. End of Page "THANK YOU" Celebration Finale Animation */}
+      {/* 13. Thank You End Section */}
       <ThankYouEndSection />
 
-      {/* Footer with discreet staff link */}
+      {/* 14. Footer */}
       <Footer />
 
-      {/* Global Modals & Drawers in Indian Rupees (₹) */}
+      {/* FLOATING ACTION: 🚚 TRACK YOUR ORDER (ALWAYS VISIBLE) */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
+        <button
+          onClick={() => {
+            cozyAudio.playSoftTap();
+            setTrackingInitialOrderId('');
+            setIsTrackingModalOpen(true);
+          }}
+          className="px-4 py-3 rounded-full bg-[#FF6B6B] hover:bg-[#F05252] text-white font-black text-xs shadow-2xl flex items-center gap-2 cursor-pointer transition transform hover:scale-105 active:scale-95 border-2 border-white/60"
+          title="Track Live Shipment Status"
+        >
+          <Truck className="w-4 h-4" />
+          <span>🚚 Track Order</span>
+        </button>
+      </div>
+
+      {/* MODALS */}
       <ProductDetailModal
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
-        onNavigateToCustomizer={() => scrollToSection('customizer')}
       />
+
       <CartDrawer />
-      <CheckoutOrderModal />
+
+      <CheckoutOrderModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        onOpenTracking={(ordId) => {
+          setTrackingInitialOrderId(ordId);
+          setIsTrackingModalOpen(true);
+        }}
+      />
+
+      <OrderTrackingModal
+        isOpen={isTrackingModalOpen}
+        onClose={() => setIsTrackingModalOpen(false)}
+        initialOrderId={trackingInitialOrderId}
+      />
+
       <FloatingSoundBar />
+
     </div>
   );
 };
+
 export default App;
