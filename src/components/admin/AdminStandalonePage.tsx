@@ -35,6 +35,7 @@ import {
 import { useStore, CouponItem, StoreSettings } from '../../context/StoreContext';
 import { cozyAudio } from '../../utils/audioSynth';
 import { ShippingWaybillModal } from './ShippingWaybillModal';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { Product } from '../../types';
 
 interface AdminStandalonePageProps {
@@ -74,6 +75,7 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'dispatched' | 'delivered' | 'cancelled'>('all');
   const [selectedOrderForWaybill, setSelectedOrderForWaybill] = useState<any | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // Product Editing & Adding State
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -604,6 +606,17 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
                       {filterItem.label}
                     </button>
                   ))}
+
+                  <button
+                    onClick={() => {
+                      cozyAudio.playSoftTap();
+                      setIsScannerOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                    title="Open Barcode Scanner Tool"
+                  >
+                    <Barcode className="w-3.5 h-3.5" /> Scan Barcode
+                  </button>
 
                   <button
                     onClick={exportCSV}
@@ -1197,6 +1210,12 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
           </div>
         </div>
       )}
+
+      {/* BARCODE SCANNER FULFILLMENT MODAL */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+      />
 
       {/* SHIPPING WAYBILL MODAL */}
       {selectedOrderForWaybill && (

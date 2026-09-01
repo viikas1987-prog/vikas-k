@@ -186,8 +186,6 @@ export const App: React.FC = () => {
       <CartDrawer />
 
       <CheckoutOrderModal
-        isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
         onOpenTracking={(ordId) => {
           setTrackingInitialOrderId(ordId);
           setIsTrackingModalOpen(true);
