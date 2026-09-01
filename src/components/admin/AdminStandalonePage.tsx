@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Bell,
   LayoutDashboard,
   ShoppingBag,
   Package,
@@ -44,6 +45,11 @@ interface AdminStandalonePageProps {
 
 export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onReturnToStore }) => {
   const {
+    notifications,
+    unreadNotificationsCount,
+    markNotificationRead,
+    clearNotifications,
+    addNotification,
     products,
     coupons,
     settings,
@@ -69,6 +75,7 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
   const [authError, setAuthError] = useState(false);
 
   // Active Tab State
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'coupons' | 'settings'>('overview');
 
   // Search & Filter State
@@ -392,6 +399,63 @@ export const AdminStandalonePage: React.FC<AdminStandalonePageProps> = ({ onRetu
 
         <div className="flex items-center gap-2">
           {/* Cloud Sync Manual Button */}
+          {/* Notification Center Bell */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                cozyAudio.playSoftTap();
+                setIsNotifOpen(!isNotifOpen);
+              }}
+              className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold transition relative cursor-pointer border border-gray-700"
+              title="View Handover & Cancellation Notifications"
+            >
+              <Bell className="w-4 h-4 text-[#FF6B6B]" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#FF6B6B] text-white text-[9px] font-black flex items-center justify-center animate-pulse">
+                  {unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Flyout */}
+            {isNotifOpen && (
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#1E293B] rounded-3xl border border-gray-700 shadow-2xl p-4 space-y-3 z-50 text-left animate-fade-in">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+                  <span className="text-xs font-black text-white flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-[#FF6B6B]" /> Live Alerts & Handovers
+                  </span>
+                  <button
+                    onClick={clearNotifications}
+                    className="text-[10px] text-gray-400 hover:text-white"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-2 text-xs">
+                  {notifications.length === 0 ? (
+                    <p className="text-gray-500 text-center py-4 text-xs">No new notifications</p>
+                  ) : (
+                    notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => markNotificationRead(n.id)}
+                        className={`p-3 rounded-2xl border space-y-1 transition cursor-pointer ${
+                          n.read ? 'bg-gray-900/40 border-gray-800 text-gray-400' : 'bg-gray-900 border-rose-900/60 text-white shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[11px] text-[#FF6B6B]">{n.title}</span>
+                          <span className="text-[9px] text-gray-500">{n.timestamp}</span>
+                        </div>
+                        <p className="text-[11px] leading-snug">{n.message}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={async () => {
               cozyAudio.playSoftTap();

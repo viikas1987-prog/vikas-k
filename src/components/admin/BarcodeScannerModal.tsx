@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Barcode, Search, CheckCircle2, X, AlertTriangle, Package, Truck, RotateCcw } from 'lucide-react';
+import { Barcode, Search, CheckCircle2, X, AlertTriangle, Package, Truck, MessageSquare, Send, Check, ShieldCheck, UserCheck } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { cozyAudio } from '../../utils/audioSynth';
 
@@ -9,11 +9,14 @@ interface BarcodeScannerModalProps {
 }
 
 export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClose }) => {
-  const { orders, updateOrderStatus } = useStore();
+  const { orders, updateOrderStatus, addNotification, settings } = useStore();
   const [scannedInput, setScannedInput] = useState('');
   const [matchedOrder, setMatchedOrder] = useState<any | null>(null);
   const [hasScanned, setHasScanned] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [courierPartner, setCourierPartner] = useState('BlueDart Priority Air');
+  const [driverName, setDriverName] = useState('Courier Pickup Agent');
+  const [handoverSuccess, setHandoverSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -24,6 +27,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
 
     cozyAudio.playSparkle();
     setHasScanned(true);
+    setHandoverSuccess(false);
 
     const found = orders.find((o) => {
       const ordId = (o.orderId || o.id || '').toLowerCase();
@@ -42,35 +46,81 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
     setMatchedOrder(found || null);
     if (found) {
       cozyAudio.playCelebration();
-      setStatusMessage(`Found Order #${found.orderId || found.id}`);
+      setStatusMessage(`✓ Verified Order #${found.orderId || found.id} for Delivery Handover!`);
     } else {
       cozyAudio.playSoftTap();
-      setStatusMessage(`No order matching barcode "${scannedInput}"`);
+      setStatusMessage(`✕ No active order matching barcode "${scannedInput}"`);
     }
   };
 
-  const handleQuickStatus = async (newStatus: string) => {
+  // Handover Execution to Delivery Partner
+  const handleConfirmHandover = async () => {
     if (!matchedOrder) return;
     const orderKey = matchedOrder.orderId || matchedOrder.id;
-    cozyAudio.playSoftTap();
-    await updateOrderStatus(orderKey, newStatus);
-    setMatchedOrder((prev: any) => (prev ? { ...prev, status: newStatus } : null));
-    setStatusMessage(`Order #${orderKey} updated to '${newStatus}'!`);
+    const handoverStatus = `Dispatched with ${courierPartner} (Handover Confirmed)`;
+
+    cozyAudio.playCelebration();
+
+    // 1. Update Order Status in Cloud
+    await updateOrderStatus(orderKey, handoverStatus, {
+      courierPartner,
+      driverName,
+      handoverTimestamp: new Date().toISOString(),
+    });
+
+    // 2. Push Notification to Admin Panel
+    addNotification({
+      type: 'HANDOVER_SCAN',
+      title: '📦 Delivery Partner Handover Confirmed',
+      message: `Order #${orderKey} scanned & handed over to ${courierPartner} (${driverName}).`,
+      orderId: orderKey,
+      courierName: courierPartner,
+    });
+
+    setMatchedOrder((prev: any) => (prev ? { ...prev, status: handoverStatus } : null));
+    setHandoverSuccess(true);
+    setStatusMessage(`🎉 Handover Complete! Order #${orderKey} marked as dispatched with ${courierPartner}.`);
+  };
+
+  const handleAdminCancel = async () => {
+    if (!matchedOrder) return;
+    const orderKey = matchedOrder.orderId || matchedOrder.id;
+    const reason = window.prompt('Enter reason for cancelling this order:', 'Item Out of Stock / Damaged');
+    if (!reason) return;
+
+    const cancelStatus = `Cancelled (By Admin: ${reason})`;
+    await updateOrderStatus(orderKey, cancelStatus);
+
+    // Push notification to Admin Panel
+    addNotification({
+      type: 'ADMIN_CANCELLED',
+      title: '⚠️ Order Cancelled by Admin',
+      message: `Order #${orderKey} cancelled due to: "${reason}". Customer notification triggered.`,
+      orderId: orderKey,
+    });
+
+    setMatchedOrder((prev: any) => (prev ? { ...prev, status: cancelStatus } : null));
+    setStatusMessage(`Order #${orderKey} has been cancelled.`);
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 selection:bg-[#FF6B6B]">
-      <div className="w-full max-w-xl bg-[#1E293B] rounded-3xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in text-left">
+      <div className="w-full max-w-xl bg-[#1E293B] rounded-3xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-fade-in text-left">
         
         {/* Header */}
         <div className="p-5 bg-gray-900 border-b border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-[#FF6B6B] text-white flex items-center justify-center font-bold text-xl shadow-md">
-              <Barcode className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FF6B6B] to-[#FFA8A8] text-white flex items-center justify-center font-bold text-xl shadow-md">
+              <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-white">Live Barcode Fulfillment Scanner</h3>
-              <p className="text-[11px] text-gray-400">Scan 4×6 AWB labels or enter Order ID for instant dispatch</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-white">Delivery Partner Handover Terminal</h3>
+                <span className="text-[9px] font-black uppercase bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-800">
+                  SCANNER ACTIVE
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400">Scan package barcode upon handover to courier partner</p>
             </div>
           </div>
           <button
@@ -87,7 +137,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
           {/* Scanner Input */}
           <form onSubmit={handleScanSubmit} className="space-y-2">
             <label className="block text-gray-300 font-bold">
-              Scan Barcode with USB Scanner or Type AWB / Order ID:
+              Scan Package 4×6 AWB Barcode or Type Order ID:
             </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -105,17 +155,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
                 type="submit"
                 className="px-5 py-3 rounded-2xl bg-[#FF6B6B] hover:bg-[#F05252] text-white font-black text-xs cursor-pointer shadow-md"
               >
-                Scan / Match
+                Scan & Verify
               </button>
             </div>
             {statusMessage && (
-              <p className="text-[11px] font-bold text-emerald-400 pt-1">
+              <p className={`text-[11px] font-bold pt-1 ${statusMessage.includes('✓') || statusMessage.includes('🎉') ? 'text-emerald-400' : 'text-red-400'}`}>
                 {statusMessage}
               </p>
             )}
           </form>
 
-          {/* Result Card */}
+          {/* Result & Handover Box */}
           {matchedOrder ? (
             <div className="p-5 rounded-3xl bg-gray-900 border border-gray-700 space-y-4 animate-fade-in">
               <div className="flex items-center justify-between border-b border-gray-800 pb-3">
@@ -132,10 +182,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
                 </span>
               </div>
 
-              {/* Items to Pack */}
+              {/* Items in this parcel */}
               <div className="space-y-1.5 bg-gray-800/60 p-3.5 rounded-2xl">
                 <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">
-                  Items to Pack & Ship:
+                  Package Contents:
                 </span>
                 {matchedOrder.items?.map((item: any, i: number) => (
                   <div key={i} className="flex justify-between text-gray-300">
@@ -145,37 +195,63 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
                 ))}
               </div>
 
-              {/* 1-Click Status Dispatch & Cancellation Actions */}
-              <div className="space-y-2 pt-2 border-t border-gray-800">
-                <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">
-                  Quick Barcode Fulfillment Actions:
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    onClick={() => handleQuickStatus('Processing & Crafting')}
-                    className="p-2.5 rounded-xl bg-blue-950 text-blue-300 hover:bg-blue-900 font-bold text-xs cursor-pointer border border-blue-800"
+              {/* Handover Details */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-300 font-bold mb-1">Courier Partner:</label>
+                  <select
+                    value={courierPartner}
+                    onChange={(e) => setCourierPartner(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-white font-bold text-xs"
                   >
-                    📦 Mark Packed
-                  </button>
-                  <button
-                    onClick={() => handleQuickStatus('Dispatched (In Transit)')}
-                    className="p-2.5 rounded-xl bg-emerald-950 text-emerald-300 hover:bg-emerald-900 font-bold text-xs cursor-pointer border border-emerald-800"
-                  >
-                    🚚 Mark Dispatched
-                  </button>
-                  <button
-                    onClick={() => handleQuickStatus('Delivered')}
-                    className="p-2.5 rounded-xl bg-purple-950 text-purple-300 hover:bg-purple-900 font-bold text-xs cursor-pointer border border-purple-800"
-                  >
-                    ✨ Mark Delivered
-                  </button>
-                  <button
-                    onClick={() => handleQuickStatus('Cancelled (By Admin: Stock Issue)')}
-                    className="p-2.5 rounded-xl bg-red-950 text-red-300 hover:bg-red-900 font-bold text-xs cursor-pointer border border-red-800 col-span-2 sm:col-span-3"
-                  >
-                    ✕ Cancel Order & Initiate Refund
-                  </button>
+                    <option value="BlueDart Priority Air">BlueDart Priority Air</option>
+                    <option value="Delhivery Express">Delhivery Express</option>
+                    <option value="DTDC Air Cargo">DTDC Air Cargo</option>
+                    <option value="Shadowfax Courier">Shadowfax Courier</option>
+                    <option value="Ekart Logistics">Ekart Logistics</option>
+                  </select>
                 </div>
+
+                <div>
+                  <label className="block text-gray-300 font-bold mb-1">Driver / Agent Name:</label>
+                  <input
+                    type="text"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
+                    placeholder="e.g. Ramesh / BlueDart Van 04"
+                    className="w-full px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-white font-bold text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-2 border-t border-gray-800">
+                <button
+                  onClick={handleConfirmHandover}
+                  className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> 🤝 Confirm Handover & Notify Admin & Customer
+                </button>
+
+                {/* WhatsApp Direct Notification Link to Customer */}
+                <a
+                  href={`https://wa.me/91${matchedOrder.phone}?text=${encodeURIComponent(
+                    `Hello ${matchedOrder.fullName}, your Vikas Kumar Atelier Order #${matchedOrder.orderId || matchedOrder.id} has just been scanned and handed over to ${courierPartner}! Tracking is live at: https://cozycudlle.xyz/#track`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full py-2.5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4" /> Send Customer Handover Update on WhatsApp
+                </a>
+
+                {/* Cancel Action */}
+                <button
+                  onClick={handleAdminCancel}
+                  className="w-full py-2 rounded-2xl bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 font-bold text-xs cursor-pointer"
+                >
+                  ✕ Cancel Order & Initiate Customer Refund
+                </button>
               </div>
             </div>
           ) : hasScanned && (

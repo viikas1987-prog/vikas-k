@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import {
-  Truck,
   Search,
-  Package,
+  Truck,
   CheckCircle2,
   Clock,
+  Package,
   MapPin,
   Phone,
-  AlertCircle,
+  ShieldCheck,
   X,
-  MessageSquare,
-  AlertTriangle,
+  AlertCircle,
   RotateCcw,
-  Sparkles,
+  MessageSquare,
+  HelpCircle,
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { cozyAudio } from '../../utils/audioSynth';
@@ -28,183 +28,171 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   onClose,
   initialOrderId = '',
 }) => {
-  const { orders, updateOrderStatus, isCloudSyncing, syncWithCloud, settings } = useStore();
-  const [searchInput, setSearchInput] = useState(initialOrderId);
-  const [searchedOrder, setSearchedOrder] = useState<any | null>(() => {
-    if (initialOrderId) {
-      return orders.find(
-        (o) => (o.orderId || o.id)?.toLowerCase() === initialOrderId.toLowerCase()
-      ) || null;
-    }
-    return null;
-  });
-  const [hasSearched, setHasSearched] = useState(Boolean(initialOrderId));
+  const { orders, updateOrderStatus, addNotification, settings } = useStore();
 
-  // Cancellation State
+  const [searchQuery, setSearchQuery] = useState(initialOrderId);
+  const [trackedOrder, setTrackedOrder] = useState<any | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
-  const [cancelReason, setCancelReason] = useState('Ordered by mistake');
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('Ordered by mistake');
+  const [cancellationDone, setCancellationDone] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = searchInput.trim().toLowerCase();
+    const clean = searchQuery.trim().toLowerCase();
     if (!clean) return;
 
     cozyAudio.playSoftTap();
     setHasSearched(true);
-
-    // Refresh cloud orders to ensure most recent state
-    await syncWithCloud().catch(() => {});
-
-    const found = orders.find(
-      (o) =>
-        (o.orderId || o.id)?.toLowerCase().includes(clean) ||
-        o.phone?.includes(clean) ||
-        o.utrNumber?.includes(clean) ||
-        o.fullName?.toLowerCase().includes(clean)
-    );
-
-    setSearchedOrder(found || null);
-  };
-
-  const handleCustomerCancelOrder = async () => {
-    if (!searchedOrder) return;
-    setIsCancelling(true);
-    cozyAudio.playSoftTap();
-
-    const orderKey = searchedOrder.orderId || searchedOrder.id;
-    const newStatus = `Cancelled (Customer: ${cancelReason})`;
-
-    await updateOrderStatus(orderKey, newStatus);
-    setSearchedOrder((prev: any) => (prev ? { ...prev, status: newStatus } : null));
-
-    setIsCancelling(false);
+    setCancellationDone(false);
     setIsCancelConfirmOpen(false);
+
+    const found = orders.find((o) => {
+      const ordId = (o.orderId || o.id || '').toLowerCase();
+      const phone = (o.phone || '').toLowerCase();
+      const utr = (o.utrNumber || '').toLowerCase();
+      return (
+        ordId.includes(clean) ||
+        ordId.replace('vk-', '').includes(clean) ||
+        phone.includes(clean) ||
+        utr.includes(clean)
+      );
+    });
+
+    setTrackedOrder(found || null);
+    if (found) {
+      cozyAudio.playCelebration();
+    }
   };
 
-  // Determine Stepper Stage
-  const getStepProgress = (status: string = '') => {
-    const s = status.toLowerCase();
-    if (s.includes('cancelled')) return -1;
-    if (s.includes('delivered')) return 4;
-    if (s.includes('out for delivery')) return 3;
-    if (s.includes('dispatch') || s.includes('transit')) return 2;
-    if (s.includes('process') || s.includes('craft')) return 1;
-    return 0; // Placed / Paid
+  const handleConfirmCustomerCancellation = async () => {
+    if (!trackedOrder) return;
+    const orderKey = trackedOrder.orderId || trackedOrder.id;
+
+    cozyAudio.playCelebration();
+
+    // 1. Update Order in Cloud
+    const cancelStatus = `Cancelled (Customer Request: ${cancellationReason})`;
+    await updateOrderStatus(orderKey, cancelStatus);
+
+    // 2. Send Urgent Notification to Admin Panel
+    addNotification({
+      type: 'CUSTOMER_CANCELLED',
+      title: '🚨 Customer Order Cancellation Alert',
+      message: `Order #${orderKey} was cancelled by customer ${trackedOrder.fullName} (Reason: ${cancellationReason})`,
+      orderId: orderKey,
+    });
+
+    setTrackedOrder((prev: any) => (prev ? { ...prev, status: cancelStatus } : null));
+    setIsCancelConfirmOpen(false);
+    setCancellationDone(true);
   };
 
-  const currentStep = searchedOrder ? getStepProgress(searchedOrder.status) : 0;
-  const isCancelled = searchedOrder?.status?.toLowerCase().includes('cancelled');
-  const canCancel = searchedOrder && !isCancelled && currentStep <= 1;
+  // Determine Stepper Active Step
+  const getStageNumber = (status: string) => {
+    const st = (status || '').toLowerCase();
+    if (st.includes('cancelled')) return -1;
+    if (st.includes('delivered')) return 5;
+    if (st.includes('out for delivery')) return 4;
+    if (st.includes('dispatch') || st.includes('transit')) return 3;
+    if (st.includes('processing') || st.includes('crafting') || st.includes('packing')) return 2;
+    return 1; // Paid & Confirmed
+  };
 
-  const steps = [
-    { title: 'Order Confirmed & Paid', desc: 'UTR & payment verified with studio', icon: CheckCircle2 },
-    { title: 'Artisan Crafting & Packing', desc: 'Quality checked at Vikas Kumar Atelier', icon: Package },
-    { title: 'Dispatched & In Transit', desc: 'Handed to premium express courier', icon: Truck },
-    { title: 'Out for Delivery', desc: 'Courier agent reaching your doorstep', icon: MapPin },
-    { title: 'Delivered', desc: 'Enjoy your cozy cuddle moments!', icon: Sparkles },
+  const currentStage = trackedOrder ? getStageNumber(trackedOrder.status) : 1;
+  const isCancelled = trackedOrder && (trackedOrder.status || '').toLowerCase().includes('cancelled');
+  const canCancel = currentStage <= 2 && !isCancelled;
+
+  const stages = [
+    { num: 1, title: 'Paid & Confirmed', desc: 'Studio verified' },
+    { num: 2, title: 'Crafting & Packing', desc: 'Handcrafted artisan pack' },
+    { num: 3, title: 'Dispatched in Transit', desc: 'Priority Air Express' },
+    { num: 4, title: 'Out for Delivery', desc: 'Arriving today' },
+    { num: 5, title: 'Delivered', desc: 'Package received' },
   ];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 selection:bg-[#FF6B6B]">
-      <div className="w-full max-w-2xl bg-[#FFF9F6] dark:bg-[#1E293B] rounded-4xl border border-cozy-blush/60 dark:border-gray-700 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-fade-in">
-        
+      <div
+        className="w-full max-w-xl bg-white dark:bg-[#1E293B] rounded-3xl shadow-2xl border border-rose-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[92vh] animate-fade-in text-left"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="p-6 bg-gradient-to-r from-[#FFE8E1] to-[#FFF3EB] dark:from-[#2A3447] dark:to-[#1E293B] border-b border-cozy-blush/40 dark:border-gray-700 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#FF6B6B] text-white flex items-center justify-center text-2xl shadow-md">
+        <div className="p-5 bg-gradient-to-r from-rose-50 to-pink-50 dark:from-gray-900 dark:to-gray-800 border-b border-rose-100 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#FF6B6B] text-white flex items-center justify-center font-bold text-xl shadow-md">
               🚚
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black text-[#3E2723] dark:text-white leading-tight">
-                Live Order Tracking & Shipment Status
-              </h2>
-              <p className="text-xs text-cozy-warmBrown/80 dark:text-gray-400">
-                Track your Vikas Kumar Atelier packages across India in real-time
+              <h3 className="text-base font-black text-gray-900 dark:text-white leading-tight">
+                Live Order Journey & Tracking
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Track BlueDart / Delhivery shipments & manage cancellations
               </p>
             </div>
           </div>
-
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/80 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-[#FF6B6B] hover:text-white flex items-center justify-center transition cursor-pointer shadow-sm"
+            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 text-gray-500 hover:bg-[#FF6B6B] hover:text-white flex items-center justify-center transition cursor-pointer shadow-sm"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-          
-          {/* Search Box */}
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-4 top-3.5 text-gray-400" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Enter Order ID (e.g. VK-102938) or WhatsApp Phone Number..."
-                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-gray-900 border border-cozy-blush/60 dark:border-gray-700 text-xs font-bold text-[#3E2723] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B6B] shadow-inner"
-              />
+        {/* Content */}
+        <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
+          {/* Search Form */}
+          <form onSubmit={handleSearch} className="space-y-2">
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+              Enter Order ID or WhatsApp Mobile Number:
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="e.g. VK-839201 or 8360303562..."
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-xs font-bold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B6B]"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-5 py-3 rounded-2xl bg-[#FF6B6B] hover:bg-[#F05252] text-white font-black text-xs cursor-pointer shadow-md transition"
+              >
+                Track Package
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={isCloudSyncing}
-              className="px-6 py-3 rounded-2xl bg-[#FF6B6B] hover:bg-[#F05252] text-white font-black transition cursor-pointer shadow-md flex items-center gap-1.5"
-            >
-              {isCloudSyncing ? 'Searching...' : 'Track Package'}
-            </button>
           </form>
 
-          {/* Results Area */}
-          {hasSearched && !searchedOrder && (
-            <div className="p-8 rounded-3xl bg-white dark:bg-gray-900 border border-cozy-blush/40 dark:border-gray-800 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl mx-auto">
-                🔎
-              </div>
-              <h3 className="text-sm font-bold text-[#3E2723] dark:text-white">No Order Found</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
-                We couldn't find an active shipment matching <strong>"{searchInput}"</strong>. Please double-check your Order ID from your confirmation receipt.
+          {/* Cancellation Done Alert */}
+          {cancellationDone && (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 text-emerald-800 dark:text-emerald-300 space-y-1 animate-fade-in">
+              <p className="font-black text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" /> Cancellation Confirmed!
               </p>
-              <a
-                href={`https://wa.me/91${settings.ownerPhone}?text=Hello%20Vikas%20Kumar,%20I%20need%20help%20tracking%20my%20order:`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline pt-2"
-              >
-                <MessageSquare className="w-3.5 h-3.5" /> Need Assistance? Chat with Vikas Kumar on WhatsApp
-              </a>
+              <p className="text-[11px]">
+                Your cancellation request has been recorded. Vikas Kumar Atelier admin has been notified and refund will be processed within 24-48 hours.
+              </p>
             </div>
           )}
 
-          {searchedOrder && (
-            <div className="space-y-6 animate-fade-in">
+          {/* Tracked Order Details */}
+          {trackedOrder ? (
+            <div className="space-y-4 animate-fade-in">
               
-              {/* Order Quick Bar */}
-              <div className="p-5 rounded-3xl bg-white dark:bg-gray-900 border border-cozy-blush/60 dark:border-gray-800 shadow-sm flex items-center justify-between flex-wrap gap-3">
+              {/* Status Header */}
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-black text-sm text-[#3E2723] dark:text-white">
-                      #{searchedOrder.orderId || searchedOrder.id}
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                        isCancelled
-                          ? 'bg-red-950 text-red-400 border-red-800'
-                          : currentStep >= 4
-                          ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
-                          : 'bg-rose-950 text-[#FF6B6B] border-rose-800'
-                      }`}
-                    >
-                      {searchedOrder.status || 'Paid & Confirmed'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                    Customer: <strong>{searchedOrder.fullName}</strong> • Placed:{' '}
-                    {new Date(searchedOrder.timestamp || searchedOrder.date || Date.now()).toLocaleDateString('en-IN', {
+                  <span className="font-mono font-black text-sm text-gray-900 dark:text-white">
+                    #{trackedOrder.orderId || trackedOrder.id}
+                  </span>
+                  <p className="text-[11px] text-gray-500">
+                    Placed on {new Date(trackedOrder.timestamp || trackedOrder.date || Date.now()).toLocaleDateString('en-IN', {
                       day: 'numeric',
                       month: 'short',
                       year: 'numeric',
@@ -212,212 +200,151 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   </p>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] text-gray-400 block">Total Amount:</span>
-                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                    ₹{(searchedOrder.finalTotal || searchedOrder.total || 0).toLocaleString('en-IN')}
-                  </span>
-                </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black uppercase border ${
+                    isCancelled
+                      ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950 dark:text-red-300'
+                      : currentStage === 5
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                      : 'bg-rose-100 text-[#FF6B6B] border-rose-300 dark:bg-rose-950 dark:text-rose-300'
+                  }`}
+                >
+                  {trackedOrder.status || 'Paid & Confirmed'}
+                </span>
               </div>
 
-              {/* CANCELLED NOTIFICATION */}
-              {isCancelled ? (
-                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-red-500 text-xs">This Order Has Been Cancelled</h4>
-                    <p className="text-[11px] text-gray-600 dark:text-gray-300 leading-relaxed">
-                      Status: <strong>{searchedOrder.status}</strong>. If a payment was deducted via UPI, your refund will be processed back to your original source account within 2-4 business days.
-                    </p>
-                    <a
-                      href={`https://wa.me/91${settings.ownerPhone}?text=Hello%20Vikas%20Kumar,%20inquiring%20about%20refund%20for%20cancelled%20order%20${searchedOrder.orderId || searchedOrder.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 pt-1"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" /> Contact Vikas Kumar on WhatsApp regarding refund
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                /* LIVE TIMELINE STEPPER */
-                <div className="p-6 rounded-3xl bg-white dark:bg-gray-900 border border-cozy-blush/60 dark:border-gray-800 space-y-6">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-cozy-rose dark:text-[#FF6B6B]">
-                    Shipment Journey
+              {/* Visual 5-Stage Stepper */}
+              {!isCancelled ? (
+                <div className="p-5 rounded-2xl bg-rose-50/50 dark:bg-gray-900/60 border border-rose-100 dark:border-gray-800 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-gray-700 dark:text-gray-300 tracking-wider">
+                    Shipment Timeline Journey
                   </h4>
-
-                  <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200 dark:before:bg-gray-800">
-                    {steps.map((step, idx) => {
-                      const Icon = step.icon;
-                      const isCompleted = currentStep >= idx;
-                      const isCurrent = currentStep === idx;
+                  <div className="space-y-3">
+                    {stages.map((st) => {
+                      const isDone = currentStage >= st.num;
+                      const isCurrent = currentStage === st.num;
 
                       return (
-                        <div key={idx} className="relative flex items-start gap-3 group">
+                        <div key={st.num} className="flex items-start gap-3">
                           <div
-                            className={`w-6 h-6 rounded-full -ml-[31px] flex items-center justify-center text-xs transition-all shadow-sm ${
-                              isCompleted
-                                ? 'bg-[#FF6B6B] text-white ring-4 ring-[#FF6B6B]/20'
-                                : 'bg-gray-200 dark:bg-gray-800 text-gray-400'
-                            }`}
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition shadow-sm mt-0.5 ${
+                              isDone
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                            } ${isCurrent ? 'ring-4 ring-rose-200 dark:ring-rose-900 scale-110' : ''}`}
                           >
-                            <Icon className="w-3.5 h-3.5" />
+                            {isDone ? '✓' : st.num}
                           </div>
-
                           <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`text-xs font-bold ${
-                                  isCurrent
-                                    ? 'text-[#FF6B6B] dark:text-[#FF6B6B]'
-                                    : isCompleted
-                                    ? 'text-gray-900 dark:text-white'
-                                    : 'text-gray-400'
-                                }`}
-                              >
-                                {step.title}
-                              </span>
-                              {isCurrent && (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-[#FF6B6B] text-[9px] font-black uppercase animate-pulse">
-                                  Current Status
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                              {step.desc}
+                            <p
+                              className={`text-xs font-black ${
+                                isDone ? 'text-gray-900 dark:text-white' : 'text-gray-400'
+                              }`}
+                            >
+                              {st.title} {isCurrent && <span className="text-[#FF6B6B] text-[10px] font-bold">● Active</span>}
                             </p>
+                            <p className="text-[10px] text-gray-500">{st.desc}</p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
+              ) : (
+                <div className="p-5 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 text-red-800 dark:text-red-300 space-y-2">
+                  <p className="font-bold text-xs flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4" /> This Order has Been Cancelled
+                  </p>
+                  <p className="text-[11px]">
+                    Status: <strong>{trackedOrder.status}</strong>. If payment was completed, refunds are returned to the source UPI account.
+                  </p>
+                </div>
               )}
 
-              {/* Shipment & Customer Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-900 border border-cozy-blush/40 dark:border-gray-800 space-y-2">
-                  <span className="text-[10px] font-bold uppercase text-gray-400 block">Delivery Address:</span>
-                  <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{searchedOrder.fullName}</p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">{searchedOrder.address}</p>
-                  <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300">📱 +91 {searchedOrder.phone}</p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-900 border border-cozy-blush/40 dark:border-gray-800 space-y-2">
-                  <span className="text-[10px] font-bold uppercase text-gray-400 block">Payment & Carrier:</span>
-                  <p className="text-xs font-bold text-gray-800 dark:text-gray-200">
-                    Payment Mode: {searchedOrder.paymentMethod || 'UPI'}
-                  </p>
-                  {searchedOrder.utrNumber && (
-                    <p className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                      UTR Ref: {searchedOrder.utrNumber}
-                    </p>
-                  )}
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Express Logistics: <strong>BlueDart / Delhivery Surface Express</strong>
-                  </p>
-                </div>
-              </div>
-
-              {/* Items in Order */}
-              <div className="p-4 rounded-2xl bg-white dark:bg-gray-900 border border-cozy-blush/40 dark:border-gray-800 space-y-2">
-                <span className="text-[10px] font-bold uppercase text-gray-400 block">Ordered Items:</span>
-                <div className="space-y-1.5">
-                  {searchedOrder.items?.map((item: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between text-gray-700 dark:text-gray-300">
-                      <span>
-                        • <strong>{item.product?.name || item.name}</strong> ({item.selectedSize || 'Standard'}, {item.selectedColor?.name || 'Artisan'}) × {item.quantity || 1}
-                      </span>
-                      <span className="font-bold">
-                        ₹{((item.product?.price || item.price || 0) * (item.quantity || 1)).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              {/* Package Summary */}
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-2 text-xs">
+                <span className="font-black text-gray-700 dark:text-gray-300 block uppercase text-[10px]">
+                  Delivery Address & Items:
+                </span>
+                <p className="text-gray-700 dark:text-gray-300 font-bold">{trackedOrder.fullName} (+91 {trackedOrder.phone})</p>
+                <p className="text-gray-500 text-[11px]">{trackedOrder.address}</p>
               </div>
 
               {/* Customer Cancellation Option */}
               {canCancel && !isCancelConfirmOpen && (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <h5 className="font-bold text-amber-700 dark:text-amber-400 text-xs">Need to cancel or change your order?</h5>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      You can cancel anytime before your order is handed over to the courier.
-                    </p>
-                  </div>
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
                   <button
-                    onClick={() => {
-                      cozyAudio.playSoftTap();
-                      setIsCancelConfirmOpen(true);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition cursor-pointer shadow-sm"
+                    onClick={() => setIsCancelConfirmOpen(true)}
+                    className="w-full py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    Request Order Cancellation
+                    <RotateCcw className="w-3.5 h-3.5" /> Request Order Cancellation
                   </button>
                 </div>
               )}
 
-              {/* Cancellation Confirmation Dialog */}
+              {/* Cancellation Confirmation Step */}
               {isCancelConfirmOpen && (
-                <div className="p-5 rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 space-y-3 animate-fade-in">
-                  <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>Confirm Order Cancellation</span>
-                  </div>
-
+                <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/70 border border-red-300 space-y-3 animate-fade-in">
+                  <p className="text-xs font-black text-red-900 dark:text-red-200">
+                    Are you sure you want to cancel Order #{trackedOrder.orderId || trackedOrder.id}?
+                  </p>
                   <div>
                     <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                      Reason for cancellation:
+                      Select Cancellation Reason:
                     </label>
                     <select
-                      value={cancelReason}
-                      onChange={(e) => setCancelReason(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-xs font-bold"
+                      value={cancellationReason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-xs font-bold text-gray-900 dark:text-white"
                     >
-                      <option value="Ordered incorrect size or color">Ordered incorrect size or color</option>
-                      <option value="Need to change delivery address">Need to change delivery address</option>
                       <option value="Ordered by mistake">Ordered by mistake</option>
-                      <option value="Delivery time too long">Delivery time too long</option>
-                      <option value="Other">Other</option>
+                      <option value="Need different size or color">Need different size or color</option>
+                      <option value="Need to change delivery address">Need to change delivery address</option>
+                      <option value="Found alternative product">Found alternative product</option>
                     </select>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => setIsCancelConfirmOpen(false)}
-                      className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold text-xs cursor-pointer"
+                      className="flex-1 py-2 rounded-xl bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold text-xs"
                     >
-                      Keep My Order
+                      Keep Order
                     </button>
                     <button
-                      onClick={handleCustomerCancelOrder}
-                      disabled={isCancelling}
-                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs cursor-pointer shadow-sm"
+                      onClick={handleConfirmCustomerCancellation}
+                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md"
                     >
-                      {isCancelling ? 'Cancelling...' : 'Yes, Cancel My Order'}
+                      Confirm Cancel
                     </button>
                   </div>
                 </div>
               )}
 
+              {/* WhatsApp Support Direct Contact */}
+              <div className="pt-2">
+                <a
+                  href={`https://wa.me/91${settings.ownerPhone || '8360303562'}?text=${encodeURIComponent(
+                    `Hello Vikas Kumar Atelier, I am tracking my Order #${trackedOrder.orderId || trackedOrder.id} and have a question regarding shipment/cancellation.`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full py-2.5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <MessageSquare className="w-4 h-4" /> WhatsApp Support Hotline (+91 {settings.ownerPhone || '8360303562'})
+                </a>
+              </div>
+
             </div>
+          ) : (
+            hasSearched && (
+              <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 space-y-2">
+                <p className="text-gray-400 text-xs font-bold">No order found with matching ID or Phone number.</p>
+                <p className="text-[11px] text-gray-500">Please double check your Order ID from your confirmation screen.</p>
+              </div>
+            )
           )}
-
         </div>
-
-        {/* Footer */}
-        <div className="p-4 bg-[#FFE8E1]/50 dark:bg-[#1E293B] border-t border-cozy-blush/30 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500">
-          <span>Need live support? Contact Studio</span>
-          <a
-            href={`https://wa.me/91${settings.ownerPhone}?text=Hello%20Vikas%20Kumar,%20I%20have%20a%20question%20regarding%20my%20order!`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
-          >
-            <span>📱 +91 {settings.ownerPhone}</span>
-          </a>
-        </div>
-
       </div>
     </div>
   );
